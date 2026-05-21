@@ -1,0 +1,65 @@
+# Virtual environments
+venv
+
+# Sensitive or personal files
+secret.json
+memo.md
+
+# Temporary files and directories
+tmp
+notebook/.ipynb_checkpoints/
+notebook/figures/
+
+# Data files
+**/*.csv
+data/
+data
+!data/neuropil_info.json
+!data/README.md
+**/*.zip
+
+# Python cache files
+**/__pycache__/
+
+# Test and log files
+src/test_results
+**/lightning_logs/
+
+# Model checkpoints and results
+**/*.pth
+**/checkpoints/
+checkpoints
+results/
+outputs/
+logs/
+multirun/
+runs
+
+# Keep src/data directory
+!src/data/
+
+# Python package files
+**.egg-info/
+
+# Notes
+note/
+
+.vscode/
+.venv/
+uv.lock
+.pytest_cache/
+.ipynb_checkpoints/
+__pycache__/
+.eggs/
+.build/
+.dist/
+.ds_store
+
+.env
+.env.local
+mlruns/
+mlflow.db*
+.gh/
+
+.cursor/
+.claude/
