@@ -1,10 +1,10 @@
-"""Regenerate the figures used in report/main.tex.
+"""Regenerate figures for the lateral inhibition report.
 
 Run from the project root::
 
-    uv run python report/generate_figures.py
+    uv run python report/lateral_inhibition/generate_figures.py
 
-Output: report/figures/fig*.png (about 8 figures, ~60 s total).
+Output: report/lateral_inhibition/figures/fig*.png (about 8 figures, ~60 s total).
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ import sys
 import time
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
 import numpy as np
@@ -98,6 +98,7 @@ for col in ("inh", "exc", "other"):
         type_io[col] = 0
 type_io["total"] = type_io["inh"] + type_io["exc"] + type_io["other"]
 type_io["inh_frac"] = type_io["inh"] / type_io["total"].clip(lower=1)
+type_io["dominant_sign"] = type_io[["inh", "exc", "other"]].idxmax(axis=1)
 active = type_io[type_io["total"] >= 1000]
 
 
@@ -125,6 +126,9 @@ ec["hemi_post"] = ec["post_root_id"].map(col_map["hemisphere"])
 ec["hemi_pre"] = ec["pre_root_id"].map(pre_side_map)
 ec = ec.dropna(subset=["p_post", "q_post", "hemi_pre"])
 ec = ec[ec["hemi_pre"] == ec["hemi_post"]]
+ec_all = ec.copy()
+print(f"  observable same-hemi columnar synapses: "
+      f"{ec_all['syn_count'].sum() / conn['syn_count'].sum():.1%}")
 
 ec["wp"] = ec["p_post"] * ec["syn_count"]
 ec["wq"] = ec["q_post"] * ec["syn_count"]
@@ -156,7 +160,8 @@ ec["col_tup"] = list(zip(ec["p_post"].astype(int), ec["q_post"].astype(int)))
 spread["n_unique_cols"] = ec.groupby("pre_root_id")["col_tup"].nunique()
 type_map = neurons.drop_duplicates("root_id").set_index("root_id")[["primary_type", "nt_type"]]
 spread = spread.join(type_map).dropna(subset=["primary_type"])
-spread["sign"] = spread["nt_type"].map(classify_nt)
+spread["cell_sign_mode"] = spread["nt_type"].map(classify_nt)
+spread["sign"] = spread["cell_sign_mode"]  # display label for single-cell panels
 
 per_type_col = (
     spread.groupby("primary_type")
@@ -164,10 +169,20 @@ per_type_col = (
         n_neurons=("spread_wmean", "size"),
         type_spread=("spread_wmean", "median"),
         type_n_cols=("n_unique_cols", "median"),
-        dominant_sign=("sign", lambda x: x.value_counts().idxmax()),
+        cell_sign_mode=("cell_sign_mode", lambda x: x.value_counts().idxmax()),
     )
     .query("n_neurons >= 5")
 )
+per_type_col = per_type_col.join(
+    type_io[["inh", "exc", "other", "total", "inh_frac", "dominant_sign"]],
+    how="left",
+)
+q4_observable_syn_by_type = ec_all.groupby("pre_primary_type")["syn_count"].sum()
+total_syn_by_type = conn.groupby("pre_primary_type")["syn_count"].sum()
+active_q4_coverage = q4_observable_syn_by_type.div(total_syn_by_type).reindex(active.index).dropna()
+print(f"  active types with observable Q4 synapses: "
+      f"{len(active_q4_coverage)} / {len(active)}, "
+      f"median coverage={active_q4_coverage.median():.1%}")
 
 
 # --------------------------------------------------------------------------
@@ -483,10 +498,11 @@ def edge_stats_for_type(cell_type, hemisphere="right", min_cells=30):
     return cpq
 
 
-target_types = ["Mi1", "Mi4", "Mi9", "L1", "L2", "L3", "L4", "L5",
-                "Tm1", "Tm2", "Tm3", "Tm9", "Tm20", "Tm21",
-                "T1", "T2", "T2a", "T3", "C2", "C3",
-                "T4a", "T4b", "T4c", "T4d", "T5a", "T5b", "T5c", "T5d"]
+excluded_edge_types = {"R7", "R8"}
+target_types = sorted(
+    t for t in col_assign["type"].dropna().unique()
+    if t not in excluded_edge_types
+)
 rows = []
 for t in target_types:
     df = edge_stats_for_type(t)
@@ -541,7 +557,8 @@ ax.set(xlabel="corner/interior inh ratio",
 ax.legend(fontsize=8, loc="lower right")
 ax.grid(True, alpha=0.3, axis="x")
 
-plt.suptitle("Q9: edge effect across 28 columnar cell types", y=1.02, fontsize=12)
+plt.suptitle(f"Q9: edge effect across {len(scaling_df)} columnar cell types",
+             y=1.02, fontsize=12)
 plt.tight_layout()
 save(fig, "fig8_multi_type_edge.png")
 

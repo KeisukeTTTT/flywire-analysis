@@ -65,11 +65,11 @@ mlflow.db*
 .claude/
 
 # LaTeX build artifacts (in report/)
-report/*.aux
-report/*.log
-report/*.out
-report/*.toc
-report/*.fls
-report/*.fdb_latexmk
-report/*.synctex.gz
-report/*.pdf
+report/**/*.aux
+report/**/*.log
+report/**/*.out
+report/**/*.toc
+report/**/*.fls
+report/**/*.fdb_latexmk
+report/**/*.synctex.gz
+report/**/*.pdf

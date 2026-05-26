@@ -1,11 +1,11 @@
-# report/
+# lateral_inhibition/
 
 FlyWire 連結体データを用いたショウジョウバエ視覚系の側抑制解析結果をまとめた LaTeX レポート。
 
 ## ファイル構成
 
 ```
-report/
+report/lateral_inhibition/
   main.tex              # 本体 (日本語、約 8-10 ページ)
   generate_figures.py   # 図 8 枚を再生成する Python スクリプト
   figures/              # 図 (PNG)
@@ -22,7 +22,7 @@ report/
 
 ## Overleaf でコンパイル
 
-1. Overleaf にログインし、新規プロジェクト → **Upload Project** で、この `report/` ディレクトリを zip にしてアップロード
+1. Overleaf にログインし、新規プロジェクト → **Upload Project** で、この `report/lateral_inhibition/` ディレクトリを zip にしてアップロード
 2. プロジェクト画面で **Menu → Compiler** を **LuaLaTeX** に変更
 3. **Recompile** ボタンで PDF が生成される
 
@@ -38,18 +38,18 @@ report/
 
 ```bash
 # プロジェクトルートで
-uv run python report/generate_figures.py
+uv run python report/lateral_inhibition/generate_figures.py
 ```
 
 所要時間 約 1 分 (FlyWire データロード 35 秒 + 図生成 各数秒)。
-`report/figures/*.png` が上書きされる。
+`report/lateral_inhibition/figures/*.png` が上書きされる。
 
 ### LaTeX のコンパイル
 
 ローカルに LuaTeX-ja 環境がある場合:
 
 ```bash
-cd report
+cd report/lateral_inhibition
 lualatex main.tex
 lualatex main.tex   # 参照を解決するため 2 回実行
 ```
@@ -57,7 +57,7 @@ lualatex main.tex   # 参照を解決するため 2 回実行
 Docker で TeX Live が入っている場合:
 
 ```bash
-docker run --rm -v $(pwd):/work -w /work texlive/texlive lualatex main.tex
+docker run --rm -v $(pwd)/report/lateral_inhibition:/work -w /work texlive/texlive lualatex main.tex
 ```
 
 ## 内容概要
@@ -67,7 +67,7 @@ docker run --rm -v $(pwd):/work -w /work texlive/texlive lualatex main.tex
 - **Q1**: 全シナプスの I/E バランス (約 44% が抑制性)
 - **Q2**: 抑制性 cell type の広がり (主要 344 種中 206 種が抑制 dominant)
 - **Q3**: within-type 抑制の頻度 (41% — 支配的ではない)
-- **Q4**: Δcolumn 単位の lateral spread (抑制は興奮の約 3 倍広い)
+- **Q4**: Δcolumn 単位の lateral spread (抑制は興奮の約 3.35 倍広い)
 - **Q5**: 古典回路 (Lai, Dm, Pm 系) の検証
 - **Q6**: Dm8 (UV color circuit) の input-side metric (R7 入力 median 7 columns, max 14)
 - **Q7**: 端 column の Mi1 (絶対量は減るが E/I balance 保たれる)
