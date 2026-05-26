@@ -15,6 +15,7 @@ dependencies = [
     "loguru>=0.7",
     "python-dotenv>=1.0",
     "scipy>=1.15.3",
+    "jupytext>=1.19.3",
 ]
 
 [project.optional-dependencies]

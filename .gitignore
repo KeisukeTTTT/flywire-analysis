@@ -7,6 +7,7 @@ memo.md
 
 # Temporary files and directories
 tmp
+notebook/*.ipynb
 notebook/.ipynb_checkpoints/
 notebook/figures/
 
