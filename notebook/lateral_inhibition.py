@@ -965,6 +965,217 @@ plt.tight_layout()
 
 
 # %% [markdown]
+# ### Q7 補足: 平均化しない生データ可視化でエッジ現象を多角的に見る
+#
+# Q7 本体は corner/edge/interior の 3 カテゴリ化と median/Spearman への集約に依存しており、
+# 「medulla は等方的」「カテゴリ内の細胞は単峰性」を暗黙に仮定する。そのため局所異常・二峰性・
+# 方向依存・データアーティファクトを見落とす恐れがある。以下では Mi1 (right hemi) の生データを
+# なるべく集約せずに別角度から見る:
+#
+# - **A. 空間をつぶさない**: `inh_frac` の hex マップ + radial trend からの残差マップ
+# - **B. 分布をつぶさない**: edge_cat 別の violin + 全細胞 strip (boxplot は二峰性を隠す)
+# - **C. 連続軸でみる**: n_neighbors を 0-6 個別に, さらに inh vs exc の生散布 (距離で色付け)
+# - **D. 異方性**: 中心からの方位角別に inh 分布 (radial profile が潰している方向依存の検証)
+# - **F. 交絡チェック**: edge deficit が arbor truncation / proofreading 由来でないか
+#   (総出力 syn・未分類 nt 割合が端で増えるか)
+
+# %%
+# 共通ヘルパー: violin + 全点 strip を重ねる。
+# データ点が少ない / 分散ゼロの group は violin の KDE が不安定なので strip のみにフォールバック。
+def violin_strip(ax, data_groups, positions, colors, rng, jitter=0.13, point_size=8, alpha=0.4):
+    if isinstance(colors, str):
+        colors = [colors] * len(data_groups)
+    vio_idx = [i for i, d in enumerate(data_groups) if len(d) >= 2 and np.std(d) > 0]
+    if vio_idx:
+        vp = ax.violinplot([data_groups[i] for i in vio_idx],
+                           positions=[positions[i] for i in vio_idx],
+                           showmedians=True, widths=0.8)
+        for body, i in zip(vp['bodies'], vio_idx):
+            body.set_facecolor(colors[i]); body.set_alpha(0.3)
+    for pos, d, c in zip(positions, data_groups, colors):
+        if len(d) == 0:
+            continue
+        jit = rng.uniform(-jitter, jitter, size=len(d))
+        ax.scatter(np.full(len(d), pos) + jit, d, s=point_size, alpha=alpha, color=c, linewidths=0)
+
+# %%
+# A. 空間をつぶさない: inh_frac の hex マップ + radial trend 残差マップ
+cx, cy = axial_to_cart(mi1_pq['p'].values, mi1_pq['q'].values)
+
+fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+
+# (1) E/I 比率の空間マップ — 絶対量 (Q7 既出) ではなく比率の局所ポケットを探す
+ax = axes[0]
+sc = ax.scatter(cx, cy, c=mi1_pq['inh_frac'], cmap='RdBu_r', s=110, marker='H',
+                edgecolors='black', linewidths=0.3,
+                vmin=mi1_pq['inh_frac'].quantile(0.02), vmax=mi1_pq['inh_frac'].quantile(0.98))
+plt.colorbar(sc, ax=ax, label='inh / (inh+exc)')
+ax.set(aspect='equal', title='E/I balance per Mi1 column (spatial, no binning)')
+ax.set_xticks([]); ax.set_yticks([])
+
+# (2) radial trend からの残差: 中心距離の 2 次多項式で inh を予測し、その残差を色付け。
+#     単純な radial decay で説明できない局所異常 (特定の辺だけ強い/弱い) を浮かせる。
+d = mi1_pq['dist_from_center'].values
+coef = np.polyfit(d, mi1_pq['inh'].values, 2)
+resid = mi1_pq['inh'].values - np.polyval(coef, d)
+ax = axes[1]
+vlim = np.percentile(np.abs(resid), 98)
+sc = ax.scatter(cx, cy, c=resid, cmap='coolwarm', s=110, marker='H',
+                edgecolors='black', linewidths=0.3, vmin=-vlim, vmax=vlim)
+plt.colorbar(sc, ax=ax, label='inh syn  -  radial-model prediction')
+ax.set(aspect='equal', title='Residual of inh after removing radial trend\n(red = more inh than radius predicts)')
+ax.set_xticks([]); ax.set_yticks([])
+
+plt.suptitle('A. Spatial views without binning: local E/I pockets and non-radial anomalies', y=1.02)
+plt.tight_layout()
+
+# %%
+# B. 分布をつぶさない: edge_cat 別に violin + 全細胞 strip (boxplot は二峰性を隠す)
+cats_order = ['corner (<=3 nbrs)', 'edge (4-5 nbrs)', 'interior (6 nbrs)']
+colors_cat = ['tab:red', 'tab:orange', 'tab:blue']
+rng = np.random.default_rng(0)
+
+fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+configs = [('inh', 'inh syn per Mi1'), ('exc', 'exc syn per Mi1'), ('inh_frac', 'inh / (inh+exc)')]
+for ax, (col, ylabel) in zip(axes, configs):
+    data = [mi1_pq[mi1_pq['edge_cat'] == c][col].values for c in cats_order]
+    violin_strip(ax, data, list(range(len(cats_order))), colors_cat, rng, point_size=7, alpha=0.35)
+    ax.set_xticks(range(len(cats_order)))
+    ax.set_xticklabels([c.replace(' (', '\n(') for c in cats_order], fontsize=8)
+    ax.set(ylabel=ylabel, title=ylabel)
+    ax.grid(True, alpha=0.3, axis='y')
+plt.suptitle('B. Full per-cell distributions (violin + every cell): is the edge population unimodal?',
+             y=1.03, fontsize=12)
+plt.tight_layout()
+
+# %%
+# C. 連続軸でみる: n_neighbors を 3bin ではなく 0-6 個別に, さらに inh vs exc 生散布
+nn_vals = sorted(mi1_pq['n_neighbors'].unique())
+fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+
+# (1) n_neighbors 個別の inh 生分布
+ax = axes[0]
+data = [mi1_pq[mi1_pq['n_neighbors'] == n]['inh'].values for n in nn_vals]
+violin_strip(ax, data, nn_vals, 'tab:red', np.random.default_rng(1))
+ax.set(xlabel='# valid hex neighbors (0-6)', ylabel='inh syn per Mi1',
+       title='Inh input per exact neighbor count\n(3-category binning collapses 0,1,2,3)')
+ax.grid(True, alpha=0.3, axis='y')
+
+# (2) 同じく exc
+ax = axes[1]
+data = [mi1_pq[mi1_pq['n_neighbors'] == n]['exc'].values for n in nn_vals]
+violin_strip(ax, data, nn_vals, 'tab:blue', np.random.default_rng(2))
+ax.set(xlabel='# valid hex neighbors (0-6)', ylabel='exc syn per Mi1',
+       title='Exc input per exact neighbor count')
+ax.grid(True, alpha=0.3, axis='y')
+
+# (3) inh vs exc 生散布, 中心距離で色付け: 縁細胞が E/I 直線上を滑るか, 直線から外れるか
+ax = axes[2]
+sc = ax.scatter(mi1_pq['exc'], mi1_pq['inh'], c=mi1_pq['dist_from_center'],
+                cmap='viridis', s=22, alpha=0.7, edgecolors='none')
+plt.colorbar(sc, ax=ax, label='hex distance from center')
+mask = mi1_pq['exc'] > 0
+slope = np.polyfit(mi1_pq.loc[mask, 'exc'], mi1_pq.loc[mask, 'inh'], 1)
+xline = np.array([0, mi1_pq['exc'].max()])
+ax.plot(xline, np.polyval(slope, xline), 'k--', lw=0.8, alpha=0.6, label=f'linear fit (slope={slope[0]:.2f})')
+ax.set(xlabel='exc syn per Mi1', ylabel='inh syn per Mi1',
+       title='inh vs exc per cell (color = edge proximity)\nedge cells = dark; do they stay on the line?')
+ax.legend(fontsize=8)
+ax.grid(True, alpha=0.3)
+
+plt.suptitle('C. Continuous-axis raw views: per-neighbor distributions and raw inh-vs-exc scatter',
+             y=1.03, fontsize=12)
+plt.tight_layout()
+
+# %%
+# D. 異方性: 中心からの方位角別に inh 分布を見る (radial profile は方向を潰している)。
+#    外周リング (n_neighbors <= 5) の細胞のみ対象に、背側縁/腹側縁などで差が無いか検証する。
+edge_cells = mi1_pq[mi1_pq['n_neighbors'] <= 5].copy()
+ex, ey = axial_to_cart((edge_cells['p'] - center_p).values, (edge_cells['q'] - center_q).values)
+edge_cells['angle'] = np.degrees(np.arctan2(ey, ex)) % 360
+n_sectors = 8
+edge_cells['sector'] = (edge_cells['angle'] // (360 / n_sectors)).astype(int)
+
+fig, axes = plt.subplots(1, 2, figsize=(13, 5.5))
+
+# (1) 縁細胞を方位角でグループ化し inh の生分布 (等方なら sector 間でフラット)
+ax = axes[0]
+sectors = sorted(edge_cells['sector'].unique())
+data = [edge_cells[edge_cells['sector'] == s]['inh'].values for s in sectors]
+labels = [f'{int(s*360/n_sectors)}-{int((s+1)*360/n_sectors)}°\n(n={len(dd)})' for s, dd in zip(sectors, data)]
+violin_strip(ax, data, list(range(len(sectors))), 'tab:purple', np.random.default_rng(3))
+ax.set_xticks(range(len(sectors)))
+ax.set_xticklabels(labels, fontsize=7)
+ax.set(ylabel='inh syn per edge Mi1',
+       title='Inh input of edge cells by azimuthal direction\n(isotropic edge = flat across sectors)')
+ax.grid(True, alpha=0.3, axis='y')
+
+# (2) 縁細胞の位置を inh で色付け, どのリム方向が弱いか直接みる
+ax = axes[1]
+allx, ally = axial_to_cart(mi1_pq['p'].values, mi1_pq['q'].values)
+ax.scatter(allx, ally, c='lightgray', s=70, marker='H', alpha=0.4, linewidths=0)
+ecx, ecy = axial_to_cart(edge_cells['p'].values, edge_cells['q'].values)
+sc = ax.scatter(ecx, ecy, c=edge_cells['inh'], cmap='Reds', s=110, marker='H',
+                edgecolors='black', linewidths=0.3)
+plt.colorbar(sc, ax=ax, label='inh syn (edge cells only)')
+ax.set(aspect='equal', title='Edge cells colored by inh input\n(look for one rim systematically weaker)')
+ax.set_xticks([]); ax.set_yticks([])
+
+plt.suptitle('D. Anisotropy check: does the edge effect depend on direction (e.g. dorsal rim)?',
+             y=1.02, fontsize=12)
+plt.tight_layout()
+
+# %%
+# F. 交絡チェック: edge deficit が "arbor truncation" や proofreading 由来でないか。
+#    縁細胞は imaging volume の境界で arbor が切れ, 入力も出力も一律減るだけかもしれない。
+#    -> 総出力 syn も端で減るなら inhibition 特異的でなく cell 全体の効果 (truncation 示唆)。
+mi1_out = conn[conn['pre_root_id'].isin(mi1_ids)].groupby('pre_root_id')['syn_count'].sum()
+mi1_in_all = conn[conn['post_root_id'].isin(mi1_ids)].groupby('post_root_id')['syn_count'].sum()
+mi1_pq['total_out'] = mi1_pq['root_id'].map(mi1_out).fillna(0)
+mi1_pq['total_in'] = mi1_pq['root_id'].map(mi1_in_all).fillna(0)
+mi1_pq['other_frac'] = mi1_pq['other'] / (mi1_pq['inh'] + mi1_pq['exc'] + mi1_pq['other']).clip(lower=1)
+
+nn_vals = sorted(mi1_pq['n_neighbors'].unique())
+fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+
+# (1) n_neighbors vs 総出力 syn — 入力と同程度に落ちるなら truncation を示唆
+ax = axes[0]
+data = [mi1_pq[mi1_pq['n_neighbors'] == n]['total_out'].values for n in nn_vals]
+violin_strip(ax, data, nn_vals, 'tab:gray', np.random.default_rng(4))
+ax.set(xlabel='# valid hex neighbors', ylabel='total OUTPUT syn per Mi1',
+       title='Output also drops at edge?\n(yes => arbor truncation, not inh-specific)')
+ax.grid(True, alpha=0.3, axis='y')
+
+# (2) 総入力 vs 総出力 (端細胞が原点側に寄るか), 色 = n_neighbors
+ax = axes[1]
+sc = ax.scatter(mi1_pq['total_in'], mi1_pq['total_out'], c=mi1_pq['n_neighbors'],
+                cmap='viridis', s=22, alpha=0.7, vmin=3, vmax=6, edgecolors='none')
+plt.colorbar(sc, ax=ax, label='# neighbors')
+ax.set(xlabel='total input syn', ylabel='total output syn',
+       title='Per-cell input vs output (color = edge proximity)')
+ax.grid(True, alpha=0.3)
+
+# (3) 未分類 nt (other) の割合が端で増えるか = データ品質劣化のサイン
+ax = axes[2]
+data = [mi1_pq[mi1_pq['n_neighbors'] == n]['other_frac'].values for n in nn_vals]
+violin_strip(ax, data, nn_vals, 'tab:green', np.random.default_rng(5))
+ax.set(xlabel='# valid hex neighbors', ylabel="'other' (unclassified nt) fraction of input",
+       title='Unclassified-nt fraction vs edge\n(rises at edge => proofreading/quality artifact)')
+ax.grid(True, alpha=0.3, axis='y')
+
+r_out, p_out = st.spearmanr(mi1_pq['n_neighbors'], mi1_pq['total_out'])
+r_in, p_in = st.spearmanr(mi1_pq['n_neighbors'], mi1_pq['total_in'])
+print(f"Spearman rho (n_neighbors vs total OUTPUT syn): {r_out:.3f} (p={p_out:.2g})")
+print(f"Spearman rho (n_neighbors vs total INPUT syn) : {r_in:.3f} (p={p_in:.2g})")
+print("If output drops as steeply as input, the edge deficit is likely arbor truncation / boundary,")
+print("not a specifically reduced-inhibition phenomenon.")
+
+plt.suptitle('F. Confound check: is the edge deficit cell-wide (truncation/quality) or inhibition-specific?',
+             y=1.02, fontsize=12)
+plt.tight_layout()
+
+
+# %% [markdown]
 # ## Q8. 抑制性インターニューロンの網羅的サーベイ
 #
 # これまでは Lai / Pm / Dm / Dm8 など個別の cell type を見てきたが、視覚系の inhibitory interneuron は他にも数多い (Sm 系、CT1、LPi、Li、Lat、Lawf 等)。それぞれが異なる neuropil・spatial scale で側抑制を提供しているはずなので、**全ての inh-dominant cell type をリストアップし、family ごとに集計**する。
@@ -1257,6 +1468,275 @@ ax.grid(True, alpha=0.3, axis='x')
 
 plt.suptitle(f'Q9: edge vs center across {len(scaling_df)} columnar cell types — is Q7 Mi1 pattern universal?', y=1.03, fontsize=12)
 plt.tight_layout()
+
+# %% [markdown]
+# ## Q9 補足: 入力非対称性の空間フィールド (位置で集計しない生の空間マップ)
+#
+# Q7/Q9 は inh/exc の「総量」を, また corner/edge/interior の分類は「位置を 3 段階に集計」していた。
+# エッジ仮説の核心は **「端 column は入力を集める近傍が片側で切れている／非対称か」** という空間構造であり、
+# これは位置で集計 (binning) した瞬間に潰れる。そこで **空間情報を一切潰さず**、各 column を実際の (p,q) 位置に
+# 置いたまま、その column 固有の **入力の片寄り (lateral input centroid offset) をベクトルとして** 描く。
+#
+# **各 column の指標 (集計なし, 1 cell = 1 ベクトル)**:
+# 1. 受け手 = `column_assignment` 入りの columnar cell type (Q9 と同じ 29 種、R7/R8 除く、right hemi)
+# 2. その cell の presynaptic partner のうち **column 座標を持つ columnar source** を home からの相対 (Δp, Δq) に
+#    (Dm/Pm/Lai/CT1 等の wide-field 抑制源は座標を持たず除外 → exc に厚く inh に薄い bias。coverage 併記)
+# 3. home (Δ=0) を除いた周辺 source の **syn 重み付き重心 = offset ベクトル** を計算。対称なら ~0, 片側欠損なら外れる
+# 4. これを **実際の hex 位置に矢印で描く**: 端 column は内側向き (入力源が内側に偏る) の長い矢印, 中央は ~0 のはず
+#
+# **見方** (どれも位置で集計しない):
+# - **A. 空間ベクトル場**: 代表 type で全 column を真の位置に置き, offset ベクトルを矢印 + |offset| でヒートマップ
+# - **B. 個別 footprint montage**: 最も非対称な cell を 1 個ずつ生 footprint で (平均なし)
+# - **C. 全 type の空間マップ**: 29 種すべてを small multiples で並べ, rim の非対称が type 横断で出るか空間的に確認
+
+# %%
+# Q9 補足の前処理: 各 columnar 受け手 type について source-column footprint を集める
+hemi = 'right'
+foot_rows = []
+coverage_rows = []
+
+# 境界法線の推定方式 (改良版):
+#   旧: 直近 6 近傍のうち「欠けている」方向のベクトル和 -> 離散で ±30° 量子化, 内部の単発穴に弱い, 両側欠損で相殺。
+#   新: 半径 R_NORM 内の "存在する" 同 type 細胞の重心方向の逆 (= 存在密度勾配の外向き)。
+#       多数の present 細胞で決まるので連続的な角度が出て, 内部の単発穴の影響も希釈される。
+#   edge_cat の定義 (corner/edge/interior) は Q9 と揃えるため直近 6 近傍のままにする。
+R_NORM = 3
+def _hexdist(dp, dq):
+    return (abs(dp) + abs(dq) + abs(dp + dq)) / 2
+_norm_offsets = [(dp, dq, *axial_to_cart(dp, dq))
+                 for dp in range(-R_NORM, R_NORM + 1)
+                 for dq in range(-R_NORM, R_NORM + 1)
+                 if not (dp == 0 and dq == 0) and _hexdist(dp, dq) <= R_NORM]
+
+def boundary_normal(p, q, all_pq):
+    """半径 R_NORM 内の present 細胞重心の逆向き = 外向き境界法線の角度と強度を返す。"""
+    vx = vy = 0.0
+    for dp, dq, x, y in _norm_offsets:
+        if (p + dp, q + dq) in all_pq:
+            vx += x
+            vy += y
+    return float(np.arctan2(-vy, -vx)), float(np.hypot(vx, vy))
+
+for t in target_types:
+    cells = col_assign[(col_assign['type'] == t) & (col_assign['hemisphere'] == hemi)]
+    if len(cells) < 30:
+        continue
+    cpq = cells[['root_id', 'p', 'q']].drop_duplicates('root_id').copy()
+    all_pq = set(zip(cpq['p'], cpq['q']))
+    cpq['theta'] = [boundary_normal(p, q, all_pq)[0] for p, q in zip(cpq['p'], cpq['q'])]
+    home = cpq.set_index('root_id')
+    cids = set(cpq['root_id'])
+    inc = conn[conn['post_root_id'].isin(cids) & conn['sign'].isin(['inh', 'exc'])].copy()
+    denom = inc.groupby('sign')['syn_count'].sum()  # coverage 分母 (全 inh/exc 入力)
+    inc['p_src'] = inc['pre_root_id'].map(col_map['p'])
+    inc['q_src'] = inc['pre_root_id'].map(col_map['q'])
+    inc['hemi_src'] = inc['pre_root_id'].map(col_map['hemisphere'])
+    inc = inc.dropna(subset=['p_src', 'q_src'])
+    inc = inc[inc['hemi_src'] == hemi]
+    numer = inc.groupby('sign')['syn_count'].sum()  # columnar source で配置できた分
+    coverage_rows.append({
+        'type': t,
+        'exc_cov': float(numer.get('exc', 0) / max(denom.get('exc', 0), 1)),
+        'inh_cov': float(numer.get('inh', 0) / max(denom.get('inh', 0), 1)),
+        'n_cells': len(cpq),
+    })
+    if len(inc) == 0:
+        continue
+    inc['p0'] = inc['post_root_id'].map(home['p'])
+    inc['q0'] = inc['post_root_id'].map(home['q'])
+    inc['theta'] = inc['post_root_id'].map(home['theta'])
+    inc['dp'] = (inc['p_src'] - inc['p0']).astype(int)
+    inc['dq'] = (inc['q_src'] - inc['q0']).astype(int)
+    foot_rows.append(inc[['post_root_id', 'dp', 'dq', 'syn_count', 'sign', 'theta']].assign(type=t))
+
+foot = pd.concat(foot_rows, ignore_index=True)
+coverage = pd.DataFrame(coverage_rows).set_index('type')
+
+# 全 column の実 (p,q) 位置 (right hemi)。空間マップで矢印を置く座標として使う。
+id_pq = (col_assign[col_assign['hemisphere'] == hemi]
+         .drop_duplicates('root_id').set_index('root_id')[['p', 'q']])
+
+# 各 column につき 1 ベクトル: home (Δ=0) を除いた columnar source の syn 重み付き重心 = offset。
+#   対称な surround -> ~0, 片側が欠ける (端) -> 内側を向く長いベクトル。位置での集計 (binning) は一切しない。
+def cell_offsets(sign):
+    lat = foot[(foot['sign'] == sign) & ~((foot['dp'] == 0) & (foot['dq'] == 0))].copy()
+    lx, ly = axial_to_cart(lat['dp'].values, lat['dq'].values)
+    lat['lx'] = lx * lat['syn_count']
+    lat['ly'] = ly * lat['syn_count']
+    g = lat.groupby(['type', 'post_root_id']).agg(
+        lx=('lx', 'sum'), ly=('ly', 'sum'), w=('syn_count', 'sum'), n_src=('dp', 'size'))
+    g['ox'] = g['lx'] / g['w']     # offset ベクトル (片側欠損なら内側を向く)
+    g['oy'] = g['ly'] / g['w']
+    g['offset'] = np.hypot(g['ox'], g['oy'])
+    g = g.reset_index()
+    g['p'] = g['post_root_id'].map(id_pq['p'])
+    g['q'] = g['post_root_id'].map(id_pq['q'])
+    g = g.dropna(subset=['p', 'q'])
+    g['x'], g['y'] = axial_to_cart(g['p'].values, g['q'].values)
+    return g
+
+cell_exc = cell_offsets('exc')
+cell_inh = cell_offsets('inh')
+print(f'per-cell offset vectors: exc={len(cell_exc):,}, inh={len(cell_inh):,} '
+      f'(types: {cell_exc["type"].nunique()})')
+print(f'columnar-source coverage of input syn (median across types): '
+      f'exc {coverage["exc_cov"].median():.1%}, inh {coverage["inh_cov"].median():.1%} '
+      f'(inh は wide-field 源が多く低い: 構造上の bias)')
+
+# %%
+# A. 空間ベクトル場: 代表 type を選び, 全 column を真の hex 位置に置いて offset ベクトルを矢印で描く。
+#    背景 hex を |offset| で塗る。端の column は内側向きの長い矢印 (入力源が内側に偏る) になるはず。集計なし。
+rep = coverage[coverage['exc_cov'] >= 0.3].copy()
+rep['n_exc_cells'] = rep.index.map(cell_exc['type'].value_counts()).fillna(0)
+montage_type = rep.sort_values('n_exc_cells', ascending=False).index[0]
+
+fig, axes = plt.subplots(1, 2, figsize=(17, 8))
+for ax, (g, sgn) in zip(axes, [(cell_exc, 'exc'), (cell_inh, 'inh')]):
+    gg = g[g['type'] == montage_type]
+    if len(gg) == 0:
+        ax.set_title(f'{montage_type} {sgn}: no data'); ax.set_axis_off(); continue
+    sc = ax.scatter(gg['x'], gg['y'], c=gg['offset'], cmap='viridis', s=170, marker='H',
+                    edgecolors='none', alpha=0.9)
+    plt.colorbar(sc, ax=ax, shrink=0.7, label='|lateral input centroid offset| (hex)')
+    ax.quiver(gg['x'], gg['y'], gg['ox'], gg['oy'], angles='xy', scale_units='xy',
+              scale=0.4, width=0.003, color='black', alpha=0.85)
+    ax.set(aspect='equal', title=f'{montage_type} — {sgn} columnar input offset field (n={len(gg)} columns)')
+    ax.set_xticks([]); ax.set_yticks([])
+plt.suptitle('A. Per-column input-asymmetry vector field at true hex positions (NO spatial binning)\n'
+             'Arrow = where each column gathers its columnar input from; edge columns point inward, center ~0',
+             y=1.02, fontsize=12)
+plt.tight_layout()
+
+# %%
+# B. 個別 footprint montage: 代表 type で最も非対称な (offset 大) column を 1 個ずつ生 footprint 表示。
+#    平均なし。home=星, 緑矢印=境界法線方向, 黄矢印=実際の入力 offset 方向。source は境界側で欠けるはず。
+gg = cell_exc[cell_exc['type'] == montage_type].sort_values('offset', ascending=False)
+show_ids = gg['post_root_id'].head(12).tolist()
+off_xy = gg.set_index('post_root_id')[['ox', 'oy']]
+mt = foot[(foot['type'] == montage_type) & (foot['sign'] == 'exc') & foot['post_root_id'].isin(show_ids)].copy()
+cell_theta = mt.drop_duplicates('post_root_id').set_index('post_root_id')['theta']
+
+ncol = 4
+nrow = int(np.ceil(len(show_ids) / ncol))
+fig, axes = plt.subplots(nrow, ncol, figsize=(4 * ncol, 4 * nrow), sharex=True, sharey=True)
+axes = np.atleast_1d(axes).ravel()
+vmax_m = mt['syn_count'].max()
+for ax, pid in zip(axes, show_ids):
+    d = mt[mt['post_root_id'] == pid]
+    sx, sy = axial_to_cart(d['dp'].values, d['dq'].values)
+    sc = ax.scatter(sx, sy, c=d['syn_count'], cmap='hot_r', s=120, marker='H',
+                    edgecolors='black', linewidths=0.3, vmin=0, vmax=vmax_m)
+    ax.plot(0, 0, '*', color='cyan', markersize=16, markeredgecolor='black', markeredgewidth=0.5)
+    theta = cell_theta.get(pid, 0.0)
+    ax.annotate('', xy=(2.2 * np.cos(theta), 2.2 * np.sin(theta)), xytext=(0, 0),
+                arrowprops=dict(arrowstyle='-|>', color='lime', lw=2))
+    ox, oy = off_xy.loc[pid]
+    ax.annotate('', xy=(4 * ox, 4 * oy), xytext=(0, 0),
+                arrowprops=dict(arrowstyle='-|>', color='gold', lw=2))
+    ax.set(aspect='equal', title=f'{int(d["dp"].nunique())} src cols, offset={np.hypot(ox, oy):.2f}')
+    ax.set_xticks([]); ax.set_yticks([])
+for ax in axes[len(show_ids):]:
+    ax.set_axis_off()
+fig.colorbar(sc, ax=axes.tolist(), shrink=0.6, label='syn from each source column')
+plt.suptitle(f'B. Raw per-cell columnar exc input footprint — {montage_type} most-asymmetric columns\n'
+             '(star = home, green = boundary-normal, gold = input offset (x4); sources clipped on the boundary side)',
+             y=1.02, fontsize=12)
+
+# %%
+# C. 全 type の空間マップ: 29 種を small multiples で。各 type 全 column を真位置に置き |offset| 塗り + 矢印。
+#    位置で集計しない。rim の column が type 横断で一貫して光る (内側向き矢印) なら非対称は普遍的かつ空間的。
+types_c = sorted(cell_exc['type'].unique())
+ncol = 6
+nrow = int(np.ceil(len(types_c) / ncol))
+fig, axes = plt.subplots(nrow, ncol, figsize=(3.2 * ncol, 3.0 * nrow))
+axes = np.atleast_1d(axes).ravel()
+vmax_c = float(np.percentile(cell_exc['offset'], 97))
+for ax, t in zip(axes, types_c):
+    gg = cell_exc[cell_exc['type'] == t]
+    sc = ax.scatter(gg['x'], gg['y'], c=gg['offset'], cmap='viridis', s=16, marker='H',
+                    edgecolors='none', vmin=0, vmax=vmax_c)
+    ax.quiver(gg['x'], gg['y'], gg['ox'], gg['oy'], angles='xy', scale_units='xy', scale=0.6,
+              width=0.005, color='black', alpha=0.6)
+    ax.set(aspect='equal', title=f'{t} (n={len(gg)})')
+    ax.set_xticks([]); ax.set_yticks([])
+for ax in axes[len(types_c):]:
+    ax.set_axis_off()
+fig.colorbar(sc, ax=axes.tolist(), shrink=0.5, label='|lateral input centroid offset| (hex)')
+plt.suptitle('C. Per-column input-asymmetry field across all 29 columnar receiver types (no spatial aggregation)\n'
+             'Rim columns light up with inward offset consistently -> edge input-field asymmetry is general & spatial',
+             y=1.01, fontsize=13)
+
+
+# %% [markdown]
+# ### Q9 補足 (続き): lateral 抑制 vs bottom-up 興奮 の空間マップ
+#
+# これまでの footprint は exc/inh を sign で分けていたが、exc 側には **home column の bottom-up 入力 (Δcol=0,
+# feedforward drive) と lateral exc が混在**していた。より機能的な対比は **「surround 抑制 vs feedforward 駆動」**:
+#
+# - **bottom-up 興奮** = home column (Δcol=0) からの exc syn (feedforward drive, 例 L1->Mi1)。exc は座標を持つので ~90% 配置可能。
+# - **lateral 抑制** = その column が受ける **総 inh syn (sign ベース)**。視覚葉の columnar cell への抑制はほぼ wide-field
+#   surround 由来なので lateral と見なせる。sign ベースなので **全カバレッジ** (wide-field 源の座標問題を回避)。
+#
+# 各 column で比 **R = lateral_inh / bottom_up_exc** を計算し、真の hex 位置に色付け (位置で集計しない)。
+# これは Q7 の E/I バランスを「lateral exc 混入を除いた」正しい形にしたもの。**端で R が落ちれば surround 抑制が
+# feedforward に対して相対的に弱まる (補償なし)、上がれば相対的に強まる (補償あり)** ことを意味する。
+
+# %%
+# bottom-up 興奮: home column (Δcol=0) の exc syn (foot は同半球 columnar source なので feedforward 入力を捉える)
+bottom_up = (foot[(foot['sign'] == 'exc') & (foot['dp'] == 0) & (foot['dq'] == 0)]
+             .groupby(['type', 'post_root_id'])['syn_count'].sum()
+             .reset_index().rename(columns={'syn_count': 'bottom_up_exc'}))
+
+# lateral 抑制: その column が受ける総 inh syn (sign ベース・全カバレッジ; foot ではなく conn から直接)
+recv = (col_assign[(col_assign['hemisphere'] == hemi) & col_assign['type'].isin(target_types)]
+        .drop_duplicates('root_id')[['root_id', 'type', 'p', 'q']].copy())
+inh_tot = (conn[conn['post_root_id'].isin(set(recv['root_id'])) & (conn['sign'] == 'inh')]
+           .groupby('post_root_id')['syn_count'].sum())
+recv['lateral_inh'] = recv['root_id'].map(inh_tot).fillna(0.0)
+recv = recv.merge(bottom_up.rename(columns={'post_root_id': 'root_id'}), on=['type', 'root_id'], how='left')
+recv['bottom_up_exc'] = recv['bottom_up_exc'].fillna(0.0)
+# bottom-up が極小の column は比が不安定なので NaN (灰色) にする
+recv['ratio'] = np.where(recv['bottom_up_exc'] >= 5,
+                         recv['lateral_inh'] / recv['bottom_up_exc'].clip(lower=1), np.nan)
+recv['x'], recv['y'] = axial_to_cart(recv['p'].values, recv['q'].values)
+print(f'columns with usable ratio: {recv["ratio"].notna().sum():,} / {len(recv):,}')
+print(f'ratio (lateral_inh / bottom_up_exc) median = {recv["ratio"].median():.2f}, '
+      f'IQR = [{recv["ratio"].quantile(.25):.2f}, {recv["ratio"].quantile(.75):.2f}]')
+
+# %%
+# (i) 代表 type を大きく + (ii) 全 type small multiples。色 = R (surround 抑制 / feedforward 駆動)。集計なし。
+vmax_r = float(np.nanpercentile(recv['ratio'], 95))
+
+fig, ax = plt.subplots(figsize=(8.5, 7))
+gg = recv[recv['type'] == montage_type]
+sc = ax.scatter(gg['x'], gg['y'], c=gg['ratio'], cmap='magma', s=150, marker='H',
+                edgecolors='none', vmin=0, vmax=vmax_r)
+plt.colorbar(sc, ax=ax, shrink=0.8, label='R = lateral inh / bottom-up exc')
+ax.set(aspect='equal', title=f'{montage_type}: surround-inhibition / feedforward-drive ratio per column\n'
+       '(bright = inhibition-heavy; does the rim differ from the center?)')
+ax.set_xticks([]); ax.set_yticks([])
+plt.tight_layout()
+
+# %%
+types_c = sorted(recv['type'].unique())
+ncol = 6
+nrow = int(np.ceil(len(types_c) / ncol))
+fig, axes = plt.subplots(nrow, ncol, figsize=(3.2 * ncol, 3.0 * nrow))
+axes = np.atleast_1d(axes).ravel()
+for ax, t in zip(axes, types_c):
+    gg = recv[recv['type'] == t]
+    vmx = float(np.nanpercentile(gg['ratio'], 95)) if gg['ratio'].notna().any() else 1.0
+    sc = ax.scatter(gg['x'], gg['y'], c=gg['ratio'], cmap='magma', s=16, marker='H',
+                    edgecolors='none', vmin=0, vmax=vmx)
+    ax.set(aspect='equal', title=f'{t} (n={gg["ratio"].notna().sum()})')
+    ax.set_xticks([]); ax.set_yticks([])
+for ax in axes[len(types_c):]:
+    ax.set_axis_off()
+plt.suptitle('Lateral inhibition / bottom-up excitation ratio per column, all columnar receivers\n'
+             '(per-panel 95pct colour scale; bright rim = surround inhibition stronger relative to feedforward at the edge)',
+             y=1.01, fontsize=13)
+plt.tight_layout()
+
 
 # %% [markdown]
 # ## まとめ
