@@ -74,3 +74,6 @@ report/**/*.fls
 report/**/*.fdb_latexmk
 report/**/*.synctex.gz
 report/**/*.pdf
+
+# Per-column footprint figures (thousands of PNGs; regenerate via generate_per_column_figures.py)
+report/**/figures/per_column/
