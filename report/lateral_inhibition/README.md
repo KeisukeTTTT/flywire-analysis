@@ -17,6 +17,11 @@ report/lateral_inhibition/
     fig6_edge_effect_mi1.png
     fig7_inh_family_survey.png
     fig8_multi_type_edge.png
+    fig9_lateral_inh_vs_bottomup.png
+    fig10_t4t5_offset.png        # Q10 (A2) T4/T5 入力オフセット
+    fig11_center_surround.png    # Q11 (A1) center-surround / DoG
+    fig12_motif_census.png       # Q12 (B1) 抑制モチーフ census
+    fig13_mlayer_atlas.png       # Q13 (B2) M 層深さアトラス
   README.md             # このファイル
 ```
 
@@ -41,8 +46,8 @@ report/lateral_inhibition/
 uv run python report/lateral_inhibition/generate_figures.py
 ```
 
-所要時間 約 1 分 (FlyWire データロード 35 秒 + 図生成 各数秒)。
-`report/lateral_inhibition/figures/*.png` が上書きされる。
+所要時間 約 2--3 分 (FlyWire データロード 35 秒 + 図生成 fig1--13。fig13 は synapse_coordinates.csv のロードで +数十秒)。
+`report/lateral_inhibition/figures/*.png` (fig1--13) が上書きされる。
 
 ### LaTeX のコンパイル
 
@@ -73,5 +78,12 @@ docker run --rm -v $(pwd)/report/lateral_inhibition:/work -w /work texlive/texli
 - **Q7**: 端 column の Mi1 (絶対量は減るが E/I balance 保たれる)
 - **Q8**: 抑制性インターニューロン全 205 種の family サーベイ (Sm 系が最 wide-field)
 - **Q9**: 多 cell type で Q7 パターンが普遍的か (Yes、ただし projection neuron T4/T5 で端効果弱い)
+
+### 拡張解析 (構造から計算へ; `notebook/lateral_inhibition_extended.ipynb`)
+
+- **Q10 (A2)**: T4/T5 の方向選択性 = 入力の空間オフセット (Mi9−Mi4 dipole が亜型で回転、両半球一致、Rayleigh p≤1e-80)
+- **Q11 (A1)**: center-surround 受容野 (興奮は中心、二シナプス性抑制は広い surround、surround/center 比 2.5、DoG バンドパス)
+- **Q12 (B1)**: 抑制モチーフ census (全抑制の 41% が脱抑制、相互抑制 326 ペア、Mi4↔Mi9、Mi1→T4 の FFI)
+- **Q13 (B2)**: M 層深さアトラス (Dm 遠位 / Pm 近位 / Mi 中層、抑制は遠位に追加モード)
 
 詳細は `main.tex` の本文を参照。

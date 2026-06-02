@@ -4,7 +4,7 @@ Run from the project root::
 
     uv run python report/lateral_inhibition/generate_figures.py
 
-Output: report/lateral_inhibition/figures/fig*.png (about 8 figures, ~60 s total).
+Output: report/lateral_inhibition/figures/fig*.png (about 9 figures, ~70 s total).
 """
 
 from __future__ import annotations
@@ -78,13 +78,13 @@ pre_side_map = neurons.drop_duplicates("root_id").set_index("root_id")["side"]
 print("\nFig 1: Q1 nt_type breakdown")
 nt_syn = conn.groupby("nt_type", dropna=False)["syn_count"].sum().sort_values()
 colors = [
-    "tab:red" if x in INHIBITORY_NT else ("tab:blue" if x in EXCITATORY_NT else "gray")
+    "tab:blue" if x in INHIBITORY_NT else ("tab:red" if x in EXCITATORY_NT else "gray")
     for x in nt_syn.index
 ]
 fig, ax = plt.subplots(figsize=(7.5, 3.8))
 nt_syn.plot.barh(ax=ax, color=colors)
 ax.set(xlabel="# synapses",
-       title="Synapse count by nt_type (red=inh, blue=exc, gray=modulatory/unknown)")
+       title="Synapse count by nt_type (red=exc, blue=inh, gray=modulatory/unknown)")
 plt.tight_layout()
 save(fig, "fig1_nt_distribution.png")
 
@@ -195,11 +195,11 @@ fig, axes = plt.subplots(1, 2, figsize=(11, 3.8))
 upper = float(np.percentile(np.concatenate([inh_t["type_spread"], exc_t["type_spread"]]), 99))
 bins = np.linspace(0, upper, 25)
 axes[0].hist(exc_t["type_spread"], bins=bins, alpha=0.5, density=True,
-             label=f"exc (n={len(exc_t)})", color="tab:blue")
+             label=f"exc (n={len(exc_t)})", color="tab:red")
 axes[0].hist(inh_t["type_spread"], bins=bins, alpha=0.5, density=True,
-             label=f"inh (n={len(inh_t)})", color="tab:red")
-axes[0].axvline(exc_t["type_spread"].median(), color="tab:blue", ls="--", lw=0.8)
-axes[0].axvline(inh_t["type_spread"].median(), color="tab:red", ls="--", lw=0.8)
+             label=f"inh (n={len(inh_t)})", color="tab:blue")
+axes[0].axvline(exc_t["type_spread"].median(), color="tab:red", ls="--", lw=0.8)
+axes[0].axvline(inh_t["type_spread"].median(), color="tab:blue", ls="--", lw=0.8)
 axes[0].set(xlabel="weighted-mean Delta-column from centroid (hex)",
             ylabel="density",
             title=f"Lateral spread per cell type (inh/exc ratio = {inh_t['type_spread'].median()/exc_t['type_spread'].median():.2f})")
@@ -208,11 +208,11 @@ axes[0].legend(fontsize=8)
 upper2 = float(np.percentile(np.concatenate([inh_t["type_n_cols"], exc_t["type_n_cols"]]), 99))
 bins2 = np.linspace(0, upper2, 25)
 axes[1].hist(exc_t["type_n_cols"], bins=bins2, alpha=0.5, density=True,
-             label=f"exc (n={len(exc_t)})", color="tab:blue")
+             label=f"exc (n={len(exc_t)})", color="tab:red")
 axes[1].hist(inh_t["type_n_cols"], bins=bins2, alpha=0.5, density=True,
-             label=f"inh (n={len(inh_t)})", color="tab:red")
-axes[1].axvline(exc_t["type_n_cols"].median(), color="tab:blue", ls="--", lw=0.8)
-axes[1].axvline(inh_t["type_n_cols"].median(), color="tab:red", ls="--", lw=0.8)
+             label=f"inh (n={len(inh_t)})", color="tab:blue")
+axes[1].axvline(exc_t["type_n_cols"].median(), color="tab:red", ls="--", lw=0.8)
+axes[1].axvline(inh_t["type_n_cols"].median(), color="tab:blue", ls="--", lw=0.8)
 axes[1].set(xlabel="median # unique target columns per neuron",
             ylabel="density",
             title=f"# target columns per neuron (inh/exc ratio = {inh_t['type_n_cols'].median()/exc_t['type_n_cols'].median():.2f})")
@@ -561,6 +561,398 @@ plt.suptitle(f"Q9: edge effect across {len(scaling_df)} columnar cell types",
              y=1.02, fontsize=12)
 plt.tight_layout()
 save(fig, "fig8_multi_type_edge.png")
+
+
+# --------------------------------------------------------------------------
+# Fig 9: Q9 supplement -- lateral inhibition vs bottom-up excitation per column
+# --------------------------------------------------------------------------
+# Q7's E/I balance lumped home-column feedforward drive into "exc". Here the two
+# functional streams are separated and their ratio mapped in real hex space:
+#   bottom-up exc = home-column (Delta=0) excitatory syn (feedforward drive, e.g. L1->Mi1)
+#   lateral inh   = total inhibitory syn onto the column (sign-based, full coverage;
+#                   columnar cells are inhibited almost entirely by wide-field surround)
+# R = lateral_inh / bottom_up_exc. A rim that brightens => surround inhibition is
+# relatively stronger than feedforward at the edge (compensation); darker => weaker.
+print("\nFig 9: Q9 supplement -- lateral inh / bottom-up exc per column")
+hemi = "right"
+
+# bottom-up excitation: home-column (same (p, q) as the receiver) exc syn per receiver cell
+conn_exc = conn[conn["sign"] == "exc"]
+foot_rows = []
+for t in target_types:
+    cells = col_assign[(col_assign["type"] == t) & (col_assign["hemisphere"] == hemi)]
+    if len(cells) < 30:
+        continue
+    home = cells[["root_id", "p", "q"]].drop_duplicates("root_id").set_index("root_id")
+    inc = conn_exc[conn_exc["post_root_id"].isin(set(home.index))].copy()
+    inc["p_src"] = inc["pre_root_id"].map(col_map["p"])
+    inc["q_src"] = inc["pre_root_id"].map(col_map["q"])
+    inc["hemi_src"] = inc["pre_root_id"].map(col_map["hemisphere"])
+    inc = inc.dropna(subset=["p_src", "q_src"])
+    inc = inc[inc["hemi_src"] == hemi]
+    if len(inc) == 0:
+        continue
+    inc["dp"] = (inc["p_src"] - inc["post_root_id"].map(home["p"])).astype(int)
+    inc["dq"] = (inc["q_src"] - inc["post_root_id"].map(home["q"])).astype(int)
+    foot_rows.append(inc[["post_root_id", "dp", "dq", "syn_count"]].assign(type=t))
+foot = pd.concat(foot_rows, ignore_index=True)
+bottom_up = (foot[(foot["dp"] == 0) & (foot["dq"] == 0)]
+             .groupby(["type", "post_root_id"])["syn_count"].sum()
+             .reset_index().rename(columns={"syn_count": "bottom_up_exc"}))
+
+# lateral inhibition: total inh syn onto each columnar receiver (sign-based, full coverage)
+recv = (col_assign[(col_assign["hemisphere"] == hemi) & col_assign["type"].isin(target_types)]
+        .drop_duplicates("root_id")[["root_id", "type", "p", "q"]].copy())
+inh_tot = (conn[conn["post_root_id"].isin(set(recv["root_id"])) & (conn["sign"] == "inh")]
+           .groupby("post_root_id")["syn_count"].sum())
+recv["lateral_inh"] = recv["root_id"].map(inh_tot).fillna(0.0)
+recv = recv.merge(bottom_up.rename(columns={"post_root_id": "root_id"}),
+                  on=["type", "root_id"], how="left")
+recv["bottom_up_exc"] = recv["bottom_up_exc"].fillna(0.0)
+# columns with negligible feedforward drive give an unstable ratio -> NaN (blank hex)
+recv["ratio"] = np.where(recv["bottom_up_exc"] >= 5,
+                         recv["lateral_inh"] / recv["bottom_up_exc"].clip(lower=1), np.nan)
+recv["x"], recv["y"] = axial_to_cart(recv["p"].values, recv["q"].values)
+print(f"  columns with usable ratio: {recv['ratio'].notna().sum():,} / {len(recv):,}")
+print(f"  R (lateral_inh / bottom_up_exc) median = {recv['ratio'].median():.2f}, "
+      f"IQR = [{recv['ratio'].quantile(.25):.2f}, {recv['ratio'].quantile(.75):.2f}]")
+
+types_c = sorted(recv["type"].unique())
+ncol = 6
+nrow = int(np.ceil(len(types_c) / ncol))
+fig, axes = plt.subplots(nrow, ncol, figsize=(3.2 * ncol, 3.0 * nrow))
+axes = np.atleast_1d(axes).ravel()
+for ax, t in zip(axes, types_c):
+    gg = recv[recv["type"] == t]
+    vmx = float(np.nanpercentile(gg["ratio"], 95)) if gg["ratio"].notna().any() else 1.0
+    ax.scatter(gg["x"], gg["y"], c=gg["ratio"], cmap="magma", s=16, marker="H",
+               edgecolors="none", vmin=0, vmax=vmx)
+    ax.set(aspect="equal", title=f"{t} (n={gg['ratio'].notna().sum()})")
+    ax.set_xticks([])
+    ax.set_yticks([])
+for ax in axes[len(types_c):]:
+    ax.set_axis_off()
+plt.suptitle("Q9 supplement: lateral inhibition / bottom-up excitation ratio per column "
+             "(all columnar receivers, right hemi)\n"
+             "per-panel 95th-pctl colour scale; bright rim = surround inhibition stronger "
+             "than feedforward at the edge",
+             y=1.01, fontsize=12)
+plt.tight_layout()
+save(fig, "fig9_lateral_inh_vs_bottomup.png")
+
+
+# ==========================================================================
+# EXTENDED ANALYSES (Q10-Q13): from structure to computation
+# ==========================================================================
+# Shared per-cell column maps for the column-resolved input analyses (A2, A1).
+_P = col_map["p"].to_dict()
+_Q = col_map["q"].to_dict()
+_HM = col_map["hemisphere"].to_dict()
+
+
+def _interior_cells(cell_type, hemisphere, min_nbrs=5):
+    cells = col_assign[(col_assign["type"] == cell_type)
+                       & (col_assign["hemisphere"] == hemisphere)].drop_duplicates("root_id")
+    s = set(zip(cells["p"], cells["q"]))
+    nn = [sum((p + dp, q + dq) in s for dp, dq in hex_nbrs) for p, q in zip(cells["p"], cells["q"])]
+    return cells.assign(n_neighbors=nn).query("n_neighbors >= @min_nbrs").set_index("root_id")
+
+
+# --------------------------------------------------------------------------
+# Fig 10: Q10 (A2) T4/T5 input spatial offset -> direction selectivity
+# --------------------------------------------------------------------------
+print("\nFig 10: Q10 (A2) T4/T5 input spatial offset")
+
+
+def _per_cell_centroids(subtype, src_types, hemi):
+    cells = _interior_cells(subtype, hemi)
+    hp, hq = cells["p"].to_dict(), cells["q"].to_dict()
+    inc = conn[conn["post_root_id"].isin(set(cells.index))
+               & conn["pre_primary_type"].isin(src_types)].copy()
+    inc["sp"] = inc["pre_root_id"].map(_P)
+    inc["sq"] = inc["pre_root_id"].map(_Q)
+    inc["sh"] = inc["pre_root_id"].map(_HM)
+    inc = inc.dropna(subset=["sp", "sq"])
+    inc = inc[inc["sh"] == hemi]
+    inc["dp"] = inc["sp"] - inc["post_root_id"].map(hp)
+    inc["dq"] = inc["sq"] - inc["post_root_id"].map(hq)
+    inc["wp"] = inc["dp"] * inc["syn_count"]
+    inc["wq"] = inc["dq"] * inc["syn_count"]
+    g = inc.groupby(["post_root_id", "pre_primary_type"]).agg(
+        wp=("wp", "sum"), wq=("wq", "sum"), w=("syn_count", "sum"))
+    g["cdp"] = g["wp"] / g["w"]
+    g["cdq"] = g["wq"] / g["w"]
+    return g[["cdp", "cdq"]].unstack("pre_primary_type")
+
+
+def _circ_stats(ang):
+    n = len(ang)
+    if n < 3:
+        return np.nan, np.nan, np.nan, n
+    C, S = np.cos(ang).sum(), np.sin(ang).sum()
+    R = np.hypot(C, S) / n
+    mean = np.degrees(np.arctan2(S, C)) % 360
+    Z = n * R * R
+    p = np.exp(-Z) * (1 + (2 * Z - Z ** 2) / (4 * n)
+                      - (24 * Z - 132 * Z ** 2 + 76 * Z ** 3 - 9 * Z ** 4) / (288 * n * n))
+    return mean, R, float(min(max(p, 0.0), 1.0)), n
+
+
+def _dipole_angles(subtype, src_types, hemi, arm_pos, arm_neg):
+    cen = _per_cell_centroids(subtype, src_types, hemi)
+    need = [("cdp", arm_pos), ("cdq", arm_pos), ("cdp", arm_neg), ("cdq", arm_neg)]
+    if any(c not in cen.columns for c in need):
+        return None
+    sub = cen[need].dropna()
+    px, py = axial_to_cart(sub[("cdp", arm_pos)].values, sub[("cdq", arm_pos)].values)
+    nx, ny = axial_to_cart(sub[("cdp", arm_neg)].values, sub[("cdq", arm_neg)].values)
+    return np.arctan2(py - ny, px - nx)
+
+
+def _angdiff(a, b):
+    d = abs(a - b) % 360
+    return min(d, 360 - d)
+
+
+A2_CONFIG = {
+    "T4 (ON)": dict(subs=["T4a", "T4b", "T4c", "T4d"], srcs=["Mi1", "Tm3", "Mi9", "Mi4"], pos="Mi9", neg="Mi4"),
+    "T5 (OFF)": dict(subs=["T5a", "T5b", "T5c", "T5d"], srcs=["Tm1", "Tm2", "Tm4", "Tm9"], pos="Tm9", neg="Tm2"),
+}
+sub_colors = {"a": "tab:red", "b": "tab:blue", "c": "tab:green", "d": "tab:orange"}
+fig, axes = plt.subplots(2, 2, figsize=(11, 11), subplot_kw=dict(projection="polar"))
+for i_pw, pathway in enumerate(A2_CONFIG):
+    cfg = A2_CONFIG[pathway]
+    for j_h, hemi in enumerate(["right", "left"]):
+        ax = axes[i_pw, j_h]
+        means = {}
+        for sub in cfg["subs"]:
+            ang = _dipole_angles(sub, cfg["srcs"], hemi, cfg["pos"], cfg["neg"])
+            if ang is None or len(ang) < 3:
+                continue
+            mean, R, p, n = _circ_stats(ang)
+            means[sub] = mean
+            c = sub_colors[sub[-1]]
+            counts, edges = np.histogram(ang % (2 * np.pi), bins=24, range=(0, 2 * np.pi))
+            centers = (edges[:-1] + edges[1:]) / 2
+            ax.plot(np.append(centers, centers[0]), np.append(counts, counts[0]),
+                    color=c, alpha=0.55, lw=1.3, label=f"{sub} (R={R:.2f}, n={n})")
+            ax.annotate("", xy=(np.radians(mean), max(counts) * (R + 0.15)), xytext=(0, 0),
+                        arrowprops=dict(arrowstyle="-|>", color=c, lw=2.5))
+        ax.set_title(f"{pathway}  {hemi}\ndipole = {cfg['pos']}-{cfg['neg']}", fontsize=10)
+        ax.set_theta_zero_location("E")
+        ax.set_yticklabels([])
+        ax.legend(fontsize=6, loc="upper right", bbox_to_anchor=(1.16, 1.12))
+        if len(means) == 4:
+            sb = cfg["subs"]
+            d_ab = _angdiff(means[sb[0]], means[sb[1]])
+            d_cd = _angdiff(means[sb[2]], means[sb[3]])
+            d_axes = _angdiff((means[sb[0]] % 180) * 2, (means[sb[2]] % 180) * 2) / 2
+            print(f"  {pathway} {hemi}: {sb[0]}|{sb[1]} d={d_ab:.0f}, {sb[2]}|{sb[3]} d={d_cd:.0f} "
+                  f"(~180); axes d={d_axes:.0f} (~90)")
+plt.suptitle("Q10 (A2): per-cell input dipole angle rotates with T4/T5 subtype (preferred direction)\n"
+             "lines = per-subtype angle histogram; arrows = circular mean x resultant R", y=1.0, fontsize=11)
+save(fig, "fig10_t4t5_offset.png")
+
+
+# --------------------------------------------------------------------------
+# Fig 11: Q11 (A1) center-surround receptive field (Mexican-hat)
+# --------------------------------------------------------------------------
+print("\nFig 11: Q11 (A1) center-surround receptive field")
+
+
+def _direct_kernel(target, sign, hemi="right"):
+    cells = _interior_cells(target, hemi)
+    hp, hq = cells["p"].to_dict(), cells["q"].to_dict()
+    inc = conn[conn["post_root_id"].isin(set(cells.index)) & (conn["sign"] == sign)].copy()
+    inc["sp"] = inc["pre_root_id"].map(_P)
+    inc["sq"] = inc["pre_root_id"].map(_Q)
+    inc["sh"] = inc["pre_root_id"].map(_HM)
+    inc = inc.dropna(subset=["sp", "sq"])
+    inc = inc[inc["sh"] == hemi]
+    dp = (inc["sp"] - inc["post_root_id"].map(hp)).astype(int)
+    dq = (inc["sq"] - inc["post_root_id"].map(hq)).astype(int)
+    inc["d"] = hex_distance(dp, dq)
+    return inc.groupby("d")["syn_count"].sum()
+
+
+def _disyn_inh_kernel(target, hemi="right", top_inh_types=12):
+    cells = _interior_cells(target, hemi)
+    hp, hq = cells["p"].to_dict(), cells["q"].to_dict()
+    inh_to_t = conn[conn["post_root_id"].isin(set(cells.index)) & (conn["sign"] == "inh")].copy()
+    top_types = (inh_to_t.groupby("pre_primary_type")["syn_count"].sum()
+                 .sort_values(ascending=False).head(top_inh_types).index)
+    inh_to_t = (inh_to_t[inh_to_t["pre_primary_type"].isin(top_types)]
+                [["pre_root_id", "post_root_id", "syn_count"]].rename(columns={"syn_count": "w1"}))
+    jin = conn[conn["post_root_id"].isin(set(inh_to_t["pre_root_id"])) & (conn["sign"] == "exc")].copy()
+    jin["sp"] = jin["pre_root_id"].map(_P)
+    jin["sq"] = jin["pre_root_id"].map(_Q)
+    jin["sh"] = jin["pre_root_id"].map(_HM)
+    jin = jin.dropna(subset=["sp", "sq"])
+    jin = jin[jin["sh"] == hemi]
+    jin["w2n"] = jin["syn_count"] / jin.groupby("post_root_id")["syn_count"].transform("sum")
+    jin = jin.rename(columns={"post_root_id": "j"})[["j", "sp", "sq", "w2n"]]
+    mg = inh_to_t.merge(jin, left_on="pre_root_id", right_on="j", how="inner")
+    dp = (mg["sp"] - mg["post_root_id"].map(hp)).astype(int)
+    dq = (mg["sq"] - mg["post_root_id"].map(hq)).astype(int)
+    mg["d"] = hex_distance(dp, dq)
+    mg["w"] = mg["w1"] * mg["w2n"]
+    return mg.groupby("d")["w"].sum()
+
+
+def _norm_kernel(kern, maxd=8):
+    s = kern.reindex(range(0, maxd + 1), fill_value=0).astype(float)
+    s = s / s.sum() if s.sum() > 0 else s
+    d = np.arange(0, maxd + 1)
+    return s, float(np.sqrt((s.values * d ** 2).sum()))
+
+
+targets_a1 = ["Mi1", "Tm9", "L2", "T4a"]
+maxd = 8
+fig, axes = plt.subplots(2, len(targets_a1), figsize=(3.6 * len(targets_a1), 7))
+rr = np.arange(0, maxd + 1)
+for k, target in enumerate(targets_a1):
+    e, sig_c = _norm_kernel(_direct_kernel(target, "exc"), maxd)
+    iv, sig_s = _norm_kernel(_disyn_inh_kernel(target), maxd)
+    ax = axes[0, k]
+    ax.plot(rr, e.values, "-o", color="tab:red", label=f"exc E (s={sig_c:.2f})")
+    ax.plot(rr, iv.values, "--^", color="tab:blue", label=f"inh surround I (s={sig_s:.2f})")
+    ax.set(xlabel="Delta-column (hex)", ylabel="fraction of input", title=target)
+    ax.legend(fontsize=7)
+    ax.grid(True, alpha=0.3)
+    ax = axes[1, k]
+    f = np.linspace(0, 0.5, 200)
+    amp_c = float(e.iloc[0]) or 1.0
+    amp_s = float(iv.iloc[0]) or 1.0
+    sc_, ss_ = max(sig_c, 0.3), max(sig_s, sig_c + 0.1)
+    resp = (amp_c * sc_ ** 2 * np.exp(-2 * np.pi ** 2 * sc_ ** 2 * f ** 2)
+            - amp_s * ss_ ** 2 * np.exp(-2 * np.pi ** 2 * ss_ ** 2 * f ** 2))
+    resp = resp / np.abs(resp).max()
+    ax.plot(f, resp, color="tab:green", lw=2)
+    ax.axhline(0, color="gray", lw=0.6)
+    peak_f = f[np.argmax(resp)]
+    ax.axvline(peak_f, color="tab:red", ls=":", label=f"peak~{peak_f:.2f} cyc/col")
+    ax.set(xlabel="spatial freq (cycles/column)", ylabel="predicted resp (norm)",
+           title=f"{target}: DoG bandpass")
+    ax.legend(fontsize=7)
+    ax.grid(True, alpha=0.3)
+plt.suptitle("Q11 (A1): excitation is center-weighted, disynaptic inhibition forms a broad surround\n"
+             "(top) received radial profiles; (bottom) Difference-of-Gaussians -> bandpass spatial-frequency tuning",
+             y=1.02, fontsize=11)
+save(fig, "fig11_center_surround.png")
+
+
+# --------------------------------------------------------------------------
+# Fig 12: Q12 (B1) inhibitory microcircuit motif census
+# --------------------------------------------------------------------------
+print("\nFig 12: Q12 (B1) inhibitory motif census")
+dom = type_io["dominant_sign"]
+inh_b1 = conn[conn["sign"] == "inh"].copy()
+inh_b1["post_dom"] = inh_b1["post_primary_type"].map(dom)
+by_post = inh_b1.groupby("post_dom")["syn_count"].sum()
+tot_inh = by_post.sum()
+print(f"  disinhibition: {by_post.get('inh', 0) / tot_inh:.1%} of inhibition lands on inh-dominant cells")
+
+te = conn[conn["sign"] == "inh"].groupby(["pre_primary_type", "post_primary_type"])["syn_count"].sum()
+te_map = {(a, b): s for (a, b), s in te.items()}
+seen, recip = set(), []
+for (a, b), s_ab in te_map.items():
+    if a == b or (b, a) in seen:
+        continue
+    seen.add((a, b))
+    s_ba = te_map.get((b, a), 0)
+    if s_ab >= 500 and s_ba >= 500:
+        recip.append((a, b, int(min(s_ab, s_ba))))
+recip_df = pd.DataFrame(recip, columns=["A", "B", "min_syn"]).sort_values("min_syn", ascending=False)
+print(f"  reciprocal-inhibition type-pairs (both >=500 inh syn): {len(recip_df)}")
+
+fig, axes = plt.subplots(1, 2, figsize=(13, 6))
+d = recip_df.head(15).iloc[::-1]
+axes[0].barh(range(len(d)), d["min_syn"], color="tab:purple", edgecolor="white")
+axes[0].set_yticks(range(len(d)))
+axes[0].set_yticklabels([f"{a}<->{b}" for a, b in zip(d["A"], d["B"])], fontsize=8)
+axes[0].set(xlabel="min(A->B, B->A) inh syn", title="Reciprocal inhibition: top type-pairs")
+axes[0].grid(True, alpha=0.3, axis="x")
+vals = [by_post.get("exc", 0), by_post.get("inh", 0), by_post.get("other", 0)]
+axes[1].bar(["onto exc-dom\n(FF/FB inh)", "onto inh-dom\n(disinhibition)", "onto other"], vals,
+            color=["tab:red", "tab:blue", "gray"], edgecolor="white")
+for x_pos, v in enumerate(vals):
+    axes[1].text(x_pos, v, f"{v / tot_inh:.1%}", ha="center", va="bottom", fontweight="bold")
+axes[1].set(ylabel="total inhibitory synapses", title="Where does inhibition land?")
+axes[1].grid(True, alpha=0.3, axis="y")
+plt.suptitle("Q12 (B1): inhibitory microcircuit motif census", y=1.02, fontsize=12)
+plt.tight_layout()
+save(fig, "fig12_motif_census.png")
+
+
+# --------------------------------------------------------------------------
+# Fig 13: Q13 (B2) M-layer (depth) atlas of inhibition
+# --------------------------------------------------------------------------
+print("\nFig 13: Q13 (B2) M-layer depth atlas")
+_neur = neurons.drop_duplicates("root_id").set_index("root_id")
+_type, _side = _neur["primary_type"], _neur["side"]
+CURATED = {"Dm1": "inh", "Dm4": "inh", "Dm9": "inh", "Dm12": "inh",
+           "Pm04": "inh", "Pm08": "inh", "Pm09": "inh", "CT1": "inh", "Mi4": "inh", "Mi9": "inh",
+           "Mi1": "exc-ref", "L5": "exc-ref", "Tm3": "exc-ref", "Tm9": "exc-ref"}
+right_curated = set(_neur.index[(_side == "right") & (_type.isin(CURATED))])
+mi1_right_ids = set(_neur.index[(_side == "right") & (_type == "Mi1")])
+syn_path = Path(DATA_DIR) / "raw" / "flywire" / "csv" / "synapse_coordinates.csv"
+t_b2 = time.perf_counter()
+syndf = pd.read_csv(syn_path, dtype={"pre_root_id": str}, usecols=["pre_root_id", "x", "y", "z"])
+syndf["pre_root_id"] = syndf["pre_root_id"].ffill()
+syndf = syndf.dropna(subset=["pre_root_id"])
+syndf = syndf[syndf["pre_root_id"].isin(right_curated | mi1_right_ids)].copy()
+syndf["ptype"] = syndf["pre_root_id"].map(_type)
+print(f"  loaded+filtered {len(syndf):,} right-hemi curated synapses in {time.perf_counter() - t_b2:.1f}s")
+
+mi1_sc = syndf[syndf["pre_root_id"].isin(mi1_right_ids)]
+cnt = mi1_sc.groupby("pre_root_id").size()
+cents = mi1_sc.groupby("pre_root_id")[["x", "y", "z"]].mean()[cnt >= 20]
+Xc = cents.values - cents.values.mean(axis=0)
+_, _, Vt = np.linalg.svd(Xc, full_matrices=False)
+normal, c0 = Vt[-1], cents.values.mean(axis=0)
+syndf["depth"] = (syndf[["x", "y", "z"]].values - c0) @ normal
+lo, hi = np.percentile(syndf.loc[syndf["ptype"] == "Mi1", "depth"], [1, 99])
+lo, hi = min(lo, hi), max(lo, hi)
+syndf["rel_depth"] = (syndf["depth"] - lo) / (hi - lo)
+if (syndf.loc[syndf["ptype"].isin(["Dm1", "Dm4", "Dm12"]), "rel_depth"].median()
+        > syndf.loc[syndf["ptype"].isin(["Pm04", "Pm08", "Pm09"]), "rel_depth"].median()):
+    syndf["rel_depth"] = 1 - syndf["rel_depth"]
+WIN = (-0.25, 1.25)
+order = [t for t in ["L5", "Mi1", "Tm3", "Dm1", "Dm9", "Dm12", "Dm4", "Mi9", "Mi4", "Tm9", "Pm08", "Pm09", "Pm04"]
+         if (syndf["ptype"] == t).any()]
+order_plot = [t for t in order if syndf.loc[(syndf["ptype"] == t) & syndf["rel_depth"].between(*WIN)].shape[0] >= 50]
+print(f"  per-type median depth: "
+      f"{ {t: round(float(syndf.loc[(syndf['ptype']==t) & syndf['rel_depth'].between(*WIN), 'rel_depth'].median()), 2) for t in order_plot} }")
+
+fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+colors_sign = {"inh": "tab:blue", "exc-ref": "tab:red"}
+data = [syndf.loc[(syndf["ptype"] == t) & syndf["rel_depth"].between(*WIN), "rel_depth"].values for t in order_plot]
+ax = axes[0]
+vp = ax.violinplot(data, positions=range(len(order_plot)), vert=False, showmedians=True, widths=0.85)
+for kk, body in enumerate(vp["bodies"]):
+    body.set_facecolor(colors_sign[CURATED[order_plot[kk]]])
+    body.set_alpha(0.45)
+ax.set_yticks(range(len(order_plot)))
+ax.set_yticklabels([f"{t} ({CURATED[t][:3]})" for t in order_plot], fontsize=9)
+ax.set(xlabel="relative medulla depth (0=distal/M1 .. 1=proximal/M10)", xlim=WIN,
+       title="(A) Synapse depth by cell type (red=exc ref, blue=inh)")
+ax.axvline(0, color="gray", ls=":", alpha=0.5)
+ax.axvline(1, color="gray", ls=":", alpha=0.5)
+ax.grid(True, alpha=0.3, axis="x")
+ax = axes[1]
+inh_d = syndf.loc[(syndf["ptype"].map(CURATED) == "inh") & syndf["rel_depth"].between(*WIN), "rel_depth"]
+exc_d = syndf.loc[(syndf["ptype"].map(CURATED) == "exc-ref") & syndf["rel_depth"].between(*WIN), "rel_depth"]
+bins = np.linspace(WIN[0], WIN[1], 31)
+ax.hist(exc_d, bins=bins, density=True, alpha=0.5, color="tab:red", label=f"exc ref (n={len(exc_d):,})")
+ax.hist(inh_d, bins=bins, density=True, alpha=0.5, color="tab:blue", label=f"inh (n={len(inh_d):,})")
+ax.set(xlabel="relative medulla depth", ylabel="density",
+       title="(B) inh vs exc-reference depth (inh has extra distal mode)")
+ax.legend(fontsize=9)
+ax.grid(True, alpha=0.3)
+plt.suptitle("Q13 (B2): layer-resolved inhibition in the medulla (Mi1-PCA depth ruler; "
+             "global-normal proxy excludes multi-neuropil CT1)", y=1.02, fontsize=11)
+plt.tight_layout()
+save(fig, "fig13_mlayer_atlas.png")
 
 
 print("\n--- done ---")
