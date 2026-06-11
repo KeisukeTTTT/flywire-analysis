@@ -571,6 +571,31 @@ class FlyWireDataManager(BaseDataManager):
         # bilateral が片方でも関与する edge は、シナプス位置が対象半球の neuropil である必要がある
         return conn_df[(~(is_bilateral_pre | is_bilateral_post)) | is_target_side]
 
+    def _ensure_stem_loaded(self, stem: str) -> pd.DataFrame:
+        """Lazily load a CSV stem on demand and return its DataFrame.
+
+        Used for optional tables (e.g. visual_neuron_types, neuropil_synapse_table)
+        that are not in ``_required_csv_stems()`` so callers need not preload them.
+        """
+        if stem not in self.dataframes:
+            self._load_csv_stems({stem})
+        return self.dataframes[stem]
+
+    def get_visual_neuron_types_df(self) -> pd.DataFrame:
+        """visual_neuron_types.csv (root_id, type, family, subsystem, category, side).
+
+        Curated optic-lobe taxonomy consumed by ``src.lateral.stage`` for processing
+        stage assignment. Loaded lazily on first call (~6 MB).
+        """
+        return self._ensure_stem_loaded("visual_neuron_types")
+
+    def get_neuropil_synapse_table_df(self) -> pd.DataFrame:
+        """neuropil_synapse_table.csv: per-neuron input/output synapse & partner counts
+        broken down by neuropil. Used to derive each neuron's dominant input/output
+        neuropil. ~90 MB; loaded lazily on first call.
+        """
+        return self._ensure_stem_loaded("neuropil_synapse_table")
+
     def get_ol_r_dfs(self):
         is_right = self.optic_lobe_neurons_df["side"] == "right"
         is_bilateral = self.optic_lobe_neurons_df["primary_type"].isin(self.BILATERAL_TYPES)

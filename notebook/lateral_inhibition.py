@@ -87,10 +87,10 @@ print(f"  Other       (DA/SER/OCT)   : {other:,} ({other/total:.1%})")
 print(f"  I / (I+E)                   = {ie_share:.1%}")
 
 nt_syn = conn.groupby("nt_type", dropna=False)["syn_count"].sum().sort_values()
-colors = ["tab:red" if x in INHIBITORY_NT else ("tab:blue" if x in EXCITATORY_NT else "gray") for x in nt_syn.index]
+colors = ["tab:blue" if x in INHIBITORY_NT else ("tab:red" if x in EXCITATORY_NT else "gray") for x in nt_syn.index]
 fig, ax = plt.subplots(figsize=(8, 4))
 nt_syn.plot.barh(ax=ax, color=colors)
-ax.set(xlabel="# synapses", title="Synapse count by nt_type  (red=inh, blue=exc, gray=other)")
+ax.set(xlabel="# synapses", title="Synapse count by nt_type  (red=exc, blue=inh, gray=other)")
 plt.tight_layout()
 
 # %% [markdown]
@@ -308,10 +308,10 @@ fig, axes = plt.subplots(1, 2, figsize=(13, 4))
 ax = axes[0]
 upper = float(np.percentile(np.concatenate([inh_t["type_spread"], exc_t["type_spread"]]), 99))
 bins = np.linspace(0, upper, 30)
-ax.hist(exc_t["type_spread"], bins=bins, alpha=0.5, density=True, label=f"exc (n={len(exc_t)})", color="tab:blue")
-ax.hist(inh_t["type_spread"], bins=bins, alpha=0.5, density=True, label=f"inh (n={len(inh_t)})", color="tab:red")
-ax.axvline(exc_t["type_spread"].median(), color="tab:blue", ls="--", lw=0.8)
-ax.axvline(inh_t["type_spread"].median(), color="tab:red",  ls="--", lw=0.8)
+ax.hist(exc_t["type_spread"], bins=bins, alpha=0.5, density=True, label=f"exc (n={len(exc_t)})", color="tab:red")
+ax.hist(inh_t["type_spread"], bins=bins, alpha=0.5, density=True, label=f"inh (n={len(inh_t)})", color="tab:blue")
+ax.axvline(exc_t["type_spread"].median(), color="tab:red", ls="--", lw=0.8)
+ax.axvline(inh_t["type_spread"].median(), color="tab:blue",  ls="--", lw=0.8)
 ax.set(xlabel="weighted-mean Δcolumn from centroid (hex units)", ylabel="density",
        title=f"Lateral spread per cell type\ninh/exc median = {spread_ratio_col:.2f}")
 ax.legend(fontsize=8)
@@ -319,10 +319,10 @@ ax.legend(fontsize=8)
 ax = axes[1]
 upper = float(np.percentile(np.concatenate([inh_t["type_n_cols"], exc_t["type_n_cols"]]), 99))
 bins = np.linspace(0, upper, 30)
-ax.hist(exc_t["type_n_cols"], bins=bins, alpha=0.5, density=True, label=f"exc (n={len(exc_t)})", color="tab:blue")
-ax.hist(inh_t["type_n_cols"], bins=bins, alpha=0.5, density=True, label=f"inh (n={len(inh_t)})", color="tab:red")
-ax.axvline(exc_t["type_n_cols"].median(), color="tab:blue", ls="--", lw=0.8)
-ax.axvline(inh_t["type_n_cols"].median(), color="tab:red",  ls="--", lw=0.8)
+ax.hist(exc_t["type_n_cols"], bins=bins, alpha=0.5, density=True, label=f"exc (n={len(exc_t)})", color="tab:red")
+ax.hist(inh_t["type_n_cols"], bins=bins, alpha=0.5, density=True, label=f"inh (n={len(inh_t)})", color="tab:blue")
+ax.axvline(exc_t["type_n_cols"].median(), color="tab:red", ls="--", lw=0.8)
+ax.axvline(inh_t["type_n_cols"].median(), color="tab:blue",  ls="--", lw=0.8)
 ax.set(xlabel="median # unique target columns per neuron", ylabel="density",
        title=f"# columnar target columns per neuron\ninh/exc median = {ncol_ratio:.2f}")
 ax.legend(fontsize=8)
@@ -424,7 +424,7 @@ for ax, yscale in zip(axes, ['linear', 'log']):
         syn_by_d = type_edges.groupby(d_int)['syn_count'].sum()
         syn_by_d = syn_by_d / syn_by_d.sum()  # 各 type 内で正規化
         sign = per_type_col.loc[ctype, 'dominant_sign']
-        color = 'tab:red' if sign == 'inh' else ('tab:blue' if sign == 'exc' else 'tab:gray')
+        color = 'tab:blue' if sign == 'inh' else ('tab:red' if sign == 'exc' else 'tab:gray')
         ls = '-' if sign == 'inh' else ('--' if sign == 'exc' else ':')
         ax.plot(syn_by_d.index, syn_by_d.values, marker='o', label=f'{ctype} ({sign})',
                 color=color, alpha=0.75, linestyle=ls, linewidth=1.6, markersize=5)
@@ -807,7 +807,7 @@ cx, cy = axial_to_cart(mi1_pq['p'].values, mi1_pq['q'].values)
 
 # (1) inh
 ax = axes[0]
-sc = ax.scatter(cx, cy, c=mi1_pq['inh'], cmap='Reds', s=110, marker='H',
+sc = ax.scatter(cx, cy, c=mi1_pq['inh'], cmap='Blues', s=110, marker='H',
                 edgecolors='black', linewidths=0.3)
 plt.colorbar(sc, ax=ax, label='total inh syn to Mi1')
 ax.set(aspect='equal', title='Inhibitory input per Mi1 column')
@@ -815,7 +815,7 @@ ax.set_xticks([]); ax.set_yticks([])
 
 # (2) exc
 ax = axes[1]
-sc = ax.scatter(cx, cy, c=mi1_pq['exc'], cmap='Blues', s=110, marker='H',
+sc = ax.scatter(cx, cy, c=mi1_pq['exc'], cmap='Reds', s=110, marker='H',
                 edgecolors='black', linewidths=0.3)
 plt.colorbar(sc, ax=ax, label='total exc syn to Mi1')
 ax.set(aspect='equal', title='Excitatory input per Mi1 column')
@@ -942,9 +942,9 @@ x_bin = np.array([b.mid for b in radial.index])
 
 fig, ax = plt.subplots(figsize=(10, 4.5))
 ax.errorbar(x_bin, radial['mean_inh'], yerr=radial['sem_inh'], marker='o',
-            label='inh syn (mean +/- SEM)', color='tab:red', linewidth=2)
+            label='inh syn (mean +/- SEM)', color='tab:blue', linewidth=2)
 ax.errorbar(x_bin, radial['mean_exc'], yerr=radial['sem_exc'], marker='s',
-            label='exc syn (mean +/- SEM)', color='tab:blue', linewidth=2)
+            label='exc syn (mean +/- SEM)', color='tab:red', linewidth=2)
 ax.set(xlabel='hex distance from medulla center',
        ylabel='mean syn per Mi1 (absolute)',
        title='Radial profile: input strength decreases monotonically toward the edge')
@@ -1006,7 +1006,7 @@ fig, axes = plt.subplots(1, 2, figsize=(12, 5))
 
 # (1) E/I 比率の空間マップ — 絶対量 (Q7 既出) ではなく比率の局所ポケットを探す
 ax = axes[0]
-sc = ax.scatter(cx, cy, c=mi1_pq['inh_frac'], cmap='RdBu_r', s=110, marker='H',
+sc = ax.scatter(cx, cy, c=mi1_pq['inh_frac'], cmap='RdBu', s=110, marker='H',
                 edgecolors='black', linewidths=0.3,
                 vmin=mi1_pq['inh_frac'].quantile(0.02), vmax=mi1_pq['inh_frac'].quantile(0.98))
 plt.colorbar(sc, ax=ax, label='inh / (inh+exc)')
@@ -1020,10 +1020,10 @@ coef = np.polyfit(d, mi1_pq['inh'].values, 2)
 resid = mi1_pq['inh'].values - np.polyval(coef, d)
 ax = axes[1]
 vlim = np.percentile(np.abs(resid), 98)
-sc = ax.scatter(cx, cy, c=resid, cmap='coolwarm', s=110, marker='H',
+sc = ax.scatter(cx, cy, c=resid, cmap='coolwarm_r', s=110, marker='H',
                 edgecolors='black', linewidths=0.3, vmin=-vlim, vmax=vlim)
 plt.colorbar(sc, ax=ax, label='inh syn  -  radial-model prediction')
-ax.set(aspect='equal', title='Residual of inh after removing radial trend\n(red = more inh than radius predicts)')
+ax.set(aspect='equal', title='Residual of inh after removing radial trend\n(blue = more inh than radius predicts)')
 ax.set_xticks([]); ax.set_yticks([])
 
 plt.suptitle('A. Spatial views without binning: local E/I pockets and non-radial anomalies', y=1.02)
@@ -1056,7 +1056,7 @@ fig, axes = plt.subplots(1, 3, figsize=(18, 5))
 # (1) n_neighbors 個別の inh 生分布
 ax = axes[0]
 data = [mi1_pq[mi1_pq['n_neighbors'] == n]['inh'].values for n in nn_vals]
-violin_strip(ax, data, nn_vals, 'tab:red', np.random.default_rng(1))
+violin_strip(ax, data, nn_vals, 'tab:blue', np.random.default_rng(1))
 ax.set(xlabel='# valid hex neighbors (0-6)', ylabel='inh syn per Mi1',
        title='Inh input per exact neighbor count\n(3-category binning collapses 0,1,2,3)')
 ax.grid(True, alpha=0.3, axis='y')
@@ -1064,7 +1064,7 @@ ax.grid(True, alpha=0.3, axis='y')
 # (2) 同じく exc
 ax = axes[1]
 data = [mi1_pq[mi1_pq['n_neighbors'] == n]['exc'].values for n in nn_vals]
-violin_strip(ax, data, nn_vals, 'tab:blue', np.random.default_rng(2))
+violin_strip(ax, data, nn_vals, 'tab:red', np.random.default_rng(2))
 ax.set(xlabel='# valid hex neighbors (0-6)', ylabel='exc syn per Mi1',
        title='Exc input per exact neighbor count')
 ax.grid(True, alpha=0.3, axis='y')
@@ -1115,7 +1115,7 @@ ax = axes[1]
 allx, ally = axial_to_cart(mi1_pq['p'].values, mi1_pq['q'].values)
 ax.scatter(allx, ally, c='lightgray', s=70, marker='H', alpha=0.4, linewidths=0)
 ecx, ecy = axial_to_cart(edge_cells['p'].values, edge_cells['q'].values)
-sc = ax.scatter(ecx, ecy, c=edge_cells['inh'], cmap='Reds', s=110, marker='H',
+sc = ax.scatter(ecx, ecy, c=edge_cells['inh'], cmap='Blues', s=110, marker='H',
                 edgecolors='black', linewidths=0.3)
 plt.colorbar(sc, ax=ax, label='inh syn (edge cells only)')
 ax.set(aspect='equal', title='Edge cells colored by inh input\n(look for one rim systematically weaker)')

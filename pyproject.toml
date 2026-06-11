@@ -29,8 +29,16 @@ notebook = [
     "jupyter>=1.0",
     "ipykernel>=6.29",
     "matplotlib>=3.7",
+    "matplotlib-fontja>=1.1.0",
 ]
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["src*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+markers = [
+    "data: test requires the real FlyWire dataset (DROSOPHILA_DATA_DIR); skipped if absent",
+]

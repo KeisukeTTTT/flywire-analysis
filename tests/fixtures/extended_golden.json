@@ -1,0 +1,36 @@
+{
+  "a1_table": [
+    {
+      "target": "Mi1",
+      "exc_rms_cols": 0.7511,
+      "inh_surround_rms_cols": 2.6767,
+      "surround_center_ratio": 3.5636,
+      "exc_frac_at_home": 0.7441,
+      "inh_frac_at_home": 0.4781
+    },
+    {
+      "target": "Tm9",
+      "exc_rms_cols": 0.7555,
+      "inh_surround_rms_cols": 2.1949,
+      "surround_center_ratio": 2.9051,
+      "exc_frac_at_home": 0.7927,
+      "inh_frac_at_home": 0.4454
+    },
+    {
+      "target": "L2",
+      "exc_rms_cols": 0.9354,
+      "inh_surround_rms_cols": 1.7989,
+      "surround_center_ratio": 1.9231,
+      "exc_frac_at_home": 0.7357,
+      "inh_frac_at_home": 0.5629
+    },
+    {
+      "target": "T4a",
+      "exc_rms_cols": 1.5177,
+      "inh_surround_rms_cols": 3.2787,
+      "surround_center_ratio": 2.1603,
+      "exc_frac_at_home": 0.3451,
+      "inh_frac_at_home": 0.053
+    }
+  ]
+}
