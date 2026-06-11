@@ -40,6 +40,29 @@ REFERENCE_COLUMN_TYPE = "Mi1"
 RIM_MAX_DISTANCE = 1
 CENTER_MIN_DISTANCE = 3
 
+# Inward direction: how the per-column "toward the interior" axis is defined.
+#   "local"    -> local edge normal = direction to the centroid of the lattice columns
+#                 actually present within LOCAL_NORMAL_RADIUS hops (points away from the
+#                 missing/off-lattice side; accurate at the rim where the edge curves).
+#   "centroid" -> direction to the global lattice centroid (legacy; ~45 deg off the true
+#                 local edge normal at the rim on the curved medulla outline).
+# Interior cells (full neighborhood -> ~zero local vector) fall back to the centroid
+# direction so the inward axis stays a proper unit vector everywhere.
+INWARD_METHODS = ("local", "centroid")
+DEFAULT_INWARD_METHOD = "local"
+LOCAL_NORMAL_RADIUS = 3
+_LOCAL_NORMAL_EPS = 1e-6
+
+
+def _hex_disk_offsets(radius):
+    """All ``(dp, dq)`` offsets within ``radius`` hex hops of the origin (excl. origin)."""
+    return [
+        (dp, dq)
+        for dp in range(-radius, radius + 1)
+        for dq in range(-radius, radius + 1)
+        if (dp, dq) != (0, 0) and max(abs(dp), abs(dq), abs(dp + dq)) <= radius
+    ]
+
 
 def axial_to_cart(p, q):
     """Axial hex ``(p, q)`` -> Cartesian ``(x, y)`` on a 60-degree basis."""
@@ -122,8 +145,25 @@ def region_from_boundary_distance(distance, *, rim_max=RIM_MAX_DISTANCE, center_
     return "middle"
 
 
-def _build_column_geometry(reference_assignment, *, rim_max=RIM_MAX_DISTANCE, center_min=CENTER_MIN_DISTANCE):
-    """Per-hemisphere lattice geometry (faithful to ``build_column_geometry``)."""
+def _build_column_geometry(
+    reference_assignment,
+    *,
+    rim_max=RIM_MAX_DISTANCE,
+    center_min=CENTER_MIN_DISTANCE,
+    inward_method=DEFAULT_INWARD_METHOD,
+    local_radius=LOCAL_NORMAL_RADIUS,
+):
+    """Per-hemisphere lattice geometry (faithful to ``build_column_geometry``).
+
+    Computes both inward conventions per column -- ``inward_centroid_{x,y}`` (toward the
+    global lattice centroid) and ``inward_local_{x,y}`` (local edge normal: toward the
+    centroid of columns present within ``local_radius`` hops, falling back to the global
+    centroid where the neighborhood is full) -- and exposes the selected one as the
+    active ``inward_unit_{x,y}`` (see ``inward_method`` / :data:`INWARD_METHODS`).
+    """
+    if inward_method not in INWARD_METHODS:
+        raise ValueError(f"inward_method must be one of {INWARD_METHODS}, got {inward_method!r}")
+    disk = _hex_disk_offsets(local_radius)
     rows = []
     for hemi, hemi_df in reference_assignment.groupby("hemisphere"):
         coords = set(zip(hemi_df["p"], hemi_df["q"]))
@@ -142,15 +182,32 @@ def _build_column_geometry(reference_assignment, *, rim_max=RIM_MAX_DISTANCE, ce
                     distance[neighbor] = distance[(p, q)] + 1
                     queue.append(neighbor)
 
-        all_p = np.asarray([coord[0] for coord in coords])
-        all_q = np.asarray([coord[1] for coord in coords])
+        ordered = sorted(coords)
+        all_p = np.asarray([c[0] for c in ordered])
+        all_q = np.asarray([c[1] for c in ordered])
         all_x, all_y = axial_to_cart(all_p, all_q)
+        pos = {c: (float(x), float(y)) for c, x, y in zip(ordered, all_x, all_y)}
         center_x, center_y = float(all_x.mean()), float(all_y.mean())
         for p, q in sorted(coords):
-            x, y = axial_to_cart(p, q)
-            x, y = float(x), float(y)
-            inward_x, inward_y = center_x - x, center_y - y
-            norm = float(np.hypot(inward_x, inward_y))
+            x, y = pos[(p, q)]
+            # centroid-based inward (legacy)
+            cvx, cvy = center_x - x, center_y - y
+            cnorm = float(np.hypot(cvx, cvy))
+            cux, cuy = (cvx / cnorm, cvy / cnorm) if cnorm else (0.0, 0.0)
+            # local edge normal: mean direction toward present neighbors within local_radius
+            lvx = lvy = 0.0
+            for dp, dq in disk:
+                nb = (p + dp, q + dq)
+                if nb in coords:
+                    nx, ny = pos[nb]
+                    lvx += nx - x
+                    lvy += ny - y
+            lnorm = float(np.hypot(lvx, lvy))
+            if lnorm > _LOCAL_NORMAL_EPS:
+                lux, luy = lvx / lnorm, lvy / lnorm
+            else:  # full neighborhood (deep interior) -> direction is arbitrary; fall back
+                lux, luy = cux, cuy
+            active = (lux, luy) if inward_method == "local" else (cux, cuy)
             rows.append(
                 {
                     "hemisphere": hemi,
@@ -163,8 +220,12 @@ def _build_column_geometry(reference_assignment, *, rim_max=RIM_MAX_DISTANCE, ce
                     "region": region_from_boundary_distance(
                         distance[(p, q)], rim_max=rim_max, center_min=center_min
                     ),
-                    "inward_unit_x": inward_x / norm if norm else 0.0,
-                    "inward_unit_y": inward_y / norm if norm else 0.0,
+                    "inward_centroid_x": cux,
+                    "inward_centroid_y": cuy,
+                    "inward_local_x": lux,
+                    "inward_local_y": luy,
+                    "inward_unit_x": active[0],
+                    "inward_unit_y": active[1],
                 }
             )
     return pd.DataFrame(rows)
@@ -176,13 +237,17 @@ class ColumnGeometry:
 
     ``columns`` has one row per ``(hemisphere, p, q)`` with cartesian ``(x, y)``,
     ``n_neighbors``, ``boundary_distance`` (BFS hops from the lattice edge),
-    ``region`` (rim/middle/center) and the inward unit vector toward the lattice
-    centroid. ``cells`` is every column-assigned neuron joined to that geometry.
+    ``region`` (rim/middle/center) and the inward unit vector. Two inward conventions
+    are always present -- ``inward_local_{x,y}`` (local edge normal, default) and
+    ``inward_centroid_{x,y}`` (global centroid, legacy) -- with the selected
+    ``inward_method`` mirrored into the active ``inward_unit_{x,y}``. ``cells`` is every
+    column-assigned neuron joined to that geometry.
     """
 
     columns: pd.DataFrame
     cells: pd.DataFrame
     reference_type: str = REFERENCE_COLUMN_TYPE
+    inward_method: str = DEFAULT_INWARD_METHOD
 
     @classmethod
     def from_assignment(
@@ -192,12 +257,14 @@ class ColumnGeometry:
         reference_type=REFERENCE_COLUMN_TYPE,
         rim_max=RIM_MAX_DISTANCE,
         center_min=CENTER_MIN_DISTANCE,
+        inward_method=DEFAULT_INWARD_METHOD,
         data_dir=DATA_DIR,
     ):
         if col_assign is None:
             col_assign = load_column_assignment(data_dir)
         reference = col_assign[col_assign["type"] == reference_type]
-        columns = _build_column_geometry(reference, rim_max=rim_max, center_min=center_min)
+        columns = _build_column_geometry(reference, rim_max=rim_max, center_min=center_min,
+                                         inward_method=inward_method)
         cells = col_assign.merge(
             columns, on=["hemisphere", "p", "q"], how="left", validate="many_to_one"
         )
@@ -205,7 +272,8 @@ class ColumnGeometry:
             lambda d: region_from_boundary_distance(d, rim_max=rim_max, center_min=center_min)
         )
         cells["in_reference_grid"] = cells["boundary_distance"].notna()
-        return cls(columns=columns, cells=cells, reference_type=reference_type)
+        return cls(columns=columns, cells=cells, reference_type=reference_type,
+                   inward_method=inward_method)
 
     def pq_maps(self):
         """``(P, Q, HM)`` dicts ``root_id -> p / q / hemisphere``."""
