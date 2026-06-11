@@ -349,12 +349,23 @@ def assign_medulla_layer(
     ref_sc = sc[sc["pre_root_id"].isin(ref_ids)]
     cnt = ref_sc.groupby("pre_root_id").size()
     cents = ref_sc.groupby("pre_root_id")[["x", "y", "z"]].mean()[cnt >= min_syn_for_centroid]
+    if len(cents) < 2:
+        raise ValueError(
+            f"too few {reference_type!r} reference cells on side {side!r} with "
+            f">= {min_syn_for_centroid} synapses ({len(cents)} found); the depth axis "
+            "cannot be fit -- lower min_syn_for_centroid or check reference_type/side."
+        )
     Xc = cents.values - cents.values.mean(axis=0)
     _, _, Vt = np.linalg.svd(Xc, full_matrices=False)
     normal, c0 = Vt[-1], cents.values.mean(axis=0)
     sc["depth"] = (sc[["x", "y", "z"]].values - c0) @ normal
 
     ref_depth = sc.loc[sc["ptype"] == reference_type, "depth"]
+    if ref_depth.empty:
+        raise ValueError(
+            f"no {reference_type!r} synapses on side {side!r} to calibrate the depth "
+            "range; check reference_type/side."
+        )
     lo, hi = np.percentile(ref_depth, [1, 99])
     lo, hi = float(min(lo, hi)), float(max(lo, hi))
     flipped = False
