@@ -15,11 +15,11 @@ a partial view (median coverage ~26% of inh synapses vs ~90% of exc).
 Run from the project root::
 
     # smoke test (a few Mi1 columns)
-    uv run python report/lateral_inhibition/generate_per_column_figures.py --types Mi1 --max-per-type 3
+    uv run python scripts/lateral_inhibition/generate_per_column_figures.py --types Mi1 --max-per-type 3
     # full batch (all 29 columnar types, thousands of figures)
-    uv run python report/lateral_inhibition/generate_per_column_figures.py
+    uv run python scripts/lateral_inhibition/generate_per_column_figures.py
 
-Output: report/lateral_inhibition/figures/per_column/<type>/<type>_p<p>_q<q>_<root_id>.png
+Output: outputs/lateral_inhibition/per_column/<type>/<type>_p<p>_q<q>_<root_id>.png
 """
 
 from __future__ import annotations
@@ -42,7 +42,7 @@ import matplotlib.pyplot as plt
 from src.config import DATA_DIR
 from src.data import FlyWireDataManager
 
-OUT_ROOT = Path(__file__).resolve().parent / "figures" / "per_column"
+OUT_ROOT = REPO_ROOT / "outputs" / "lateral_inhibition" / "per_column"
 WINDOW = 9.0  # zoom half-width (cart units ~ hex columns) around the home column
 INHIBITORY_NT = {"GABA", "GLUT", "HIS"}
 EXCITATORY_NT = {"ACH"}

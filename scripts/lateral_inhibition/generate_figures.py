@@ -1,8 +1,12 @@
 """Regenerate figures for the lateral inhibition report.
 
+These are the curated figures referenced by ``report/lateral_inhibition/main.tex``,
+so they are written into the report tree (tracked), unlike the bulk exploratory
+figures which go to ``outputs/``.
+
 Run from the project root::
 
-    uv run python report/lateral_inhibition/generate_figures.py
+    uv run python scripts/lateral_inhibition/generate_figures.py
 
 Output: report/lateral_inhibition/figures/fig*.png (about 9 figures, ~70 s total).
 """
@@ -24,8 +28,8 @@ from scipy.spatial import cKDTree
 from src.config import DATA_DIR
 from src.data import FlyWireDataManager
 
-FIG_DIR = Path(__file__).resolve().parent / "figures"
-FIG_DIR.mkdir(exist_ok=True)
+FIG_DIR = REPO_ROOT / "report" / "lateral_inhibition" / "figures"
+FIG_DIR.mkdir(parents=True, exist_ok=True)
 
 INHIBITORY_NT = {"GABA", "GLUT", "HIS"}
 EXCITATORY_NT = {"ACH"}
