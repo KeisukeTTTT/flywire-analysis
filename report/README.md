@@ -19,7 +19,7 @@ report/
 
 | analysis | 内容 | 主な入力 |
 | --- | --- | --- |
-| `lateral_inhibition/` | 視覚系の側抑制解析。I/E balance、Δcolumn spread、Dm8、edge effect を扱う。 | `notebooks/lateral_inhibition.ipynb` |
+| `lateral_inhibition/` | 視覚系の側抑制解析。I/E balance、Δcolumn spread、Dm8、edge effect を扱う。 | `src/lateral/` 基盤 + `notebooks/lateral_inhibition_rigorous.ipynb` |
 
 ## 新しい分析を追加する時の標準形
 

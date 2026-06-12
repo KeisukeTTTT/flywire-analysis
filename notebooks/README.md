@@ -11,10 +11,9 @@ notebooks/
   column_assignment_validation.ipynb
   edge_compensation_t4t5_lateral.ipynb
   flywire_eda.ipynb
-  lateral_inhibition.ipynb
-  lateral_inhibition_extended.ipynb
   lateral_inhibition_rigorous.ipynb
   lateral_inhibition_edge_and_motifs.ipynb
+  lateral_inhibition_tmy16_tm33_mediators.ipynb
 ```
 
 複数画像の一括保存などバッチ処理は notebook ではなく **`scripts/`** に置く(`uv run python` で実行)。

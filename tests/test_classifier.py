@@ -13,12 +13,15 @@ from src.lateral.classifier import (
 def _stage_table():
     return pd.DataFrame(
         {
-            "root_id": ["mi_c", "mi_n", "dm", "dmpost", "l1", "lo1"],
-            "primary_type": ["Mi1", "Mi1", "Dm9", "Dm9", "L1", "Li1"],
-            "stage": ["ME", "ME", "ME", "ME", "LA", "LO"],
-            "input_stage": ["ME", "ME", "ME", "ME", "LA", "LO"],
-            "output_stage": ["ME", "ME", "ME", "ME", "ME", "LO"],
-            "is_intrinsic": [True, True, True, True, True, True],
+            "root_id": ["mi_c", "mi_n", "dm", "dmpost", "l1", "lo1", "tm"],
+            "primary_type": ["Mi1", "Mi1", "Dm9", "Dm9", "L1", "Li1", "Tm9"],
+            "stage": ["ME", "ME", "ME", "ME", "LA", "LO", "ME"],
+            "input_stage": ["ME", "ME", "ME", "ME", "LA", "LO", "ME"],
+            "output_stage": ["ME", "ME", "ME", "ME", "ME", "LO", "ME"],
+            "is_intrinsic": [True, True, True, True, True, True, True],
+            # Dm/Mi/Li are local-interneuron / amacrine families (wide-field
+            # mediators); L1 (monopolar) and Tm9 (transmedullary) are not.
+            "is_local_interneuron_family": [True, True, True, True, False, True, False],
         }
     )
 
@@ -43,13 +46,13 @@ def _conn():
     # falsely flagged inhibition-dominant.
     return pd.DataFrame(
         {
-            "pre_root_id": ["mi_n", "dm", "l1", "lo1", "dm", "mi_c", "mi_c"],
-            "post_root_id": ["mi_c", "mi_c", "mi_c", "mi_c", "dmpost", "mi_n", "x"],
-            "pre_primary_type": ["Mi1", "Dm9", "L1", "Li1", "Dm9", "Mi1", "Mi1"],
-            "post_primary_type": ["Mi1", "Mi1", "Mi1", "Mi1", "Dm9", "Mi1", "X"],
-            "neuropil": ["ME_R"] * 7,
-            "nt_type": ["GABA", "GABA", "GABA", "GABA", "GABA", "GABA", "ACH"],
-            "syn_count": [10, 20, 8, 9, 6, 3, 100],
+            "pre_root_id": ["mi_n", "dm", "l1", "lo1", "dm", "mi_c", "mi_c", "tm"],
+            "post_root_id": ["mi_c", "mi_c", "mi_c", "mi_c", "dmpost", "mi_n", "x", "mi_c"],
+            "pre_primary_type": ["Mi1", "Dm9", "L1", "Li1", "Dm9", "Mi1", "Mi1", "Tm9"],
+            "post_primary_type": ["Mi1", "Mi1", "Mi1", "Mi1", "Dm9", "Mi1", "X", "Mi1"],
+            "neuropil": ["ME_R"] * 8,
+            "nt_type": ["GABA", "GABA", "GABA", "GABA", "GABA", "GABA", "ACH", "GABA"],
+            "syn_count": [10, 20, 8, 9, 6, 3, 100, 7],
         }
     )
 
@@ -61,11 +64,27 @@ def test_classify_inhibition_labels():
     )
     label = {(r.pre_root_id, r.post_root_id): r.label for r in cl.itertuples()}
     assert label[("mi_n", "mi_c")] == "direct_lateral"  # neighbor column, same stage
-    assert label[("dm", "mi_c")] == "wide_field_lateral"  # no column -> wide-field
+    # Dm9 has no column but IS a local-interneuron family -> genuine wide-field
+    assert label[("dm", "mi_c")] == "wide_field_lateral"
+    # Tm9 has no column and is NOT a local-interneuron family -> uncolumned_other,
+    # not silently counted as a wide-field mediator
+    assert label[("tm", "mi_c")] == "uncolumned_other"
     assert label[("l1", "mi_c")] == "feedforward_inhibition"  # LA -> ME
     assert label[("lo1", "mi_c")] == "feedback_inhibition"  # LO -> ME
     # the 3-synapse Mi1->Mi1 edge is below min_syn and excluded
     assert ("mi_c", "mi_n") not in label
+
+
+def test_wide_field_family_gate_can_be_disabled():
+    # With the family gate off, the uncolumned Tm9 source falls back to the legacy
+    # "no column -> wide_field_lateral" behaviour.
+    cl = classify_inhibition(
+        _conn(), _stage_table(), col_assign=_col_assign(),
+        criteria=LateralInhibitionCriteria(min_syn=5, wide_field_requires_local_family=False),
+    )
+    label = {(r.pre_root_id, r.post_root_id): r.label for r in cl.itertuples()}
+    assert label[("tm", "mi_c")] == "wide_field_lateral"
+    assert "uncolumned_other" not in set(label.values())
 
 
 def test_disinhibition_flag_uses_output_sign():
@@ -94,8 +113,9 @@ def test_lateral_inhibition_index_fractions_sum_sensibly():
     )
     idx = lateral_inhibition_index(cl)
     label_fracs = [
-        "frac_direct_lateral", "frac_wide_field_lateral", "frac_co_columnar",
-        "frac_feedforward", "frac_feedback", "frac_cross_parallel", "frac_unknown",
+        "frac_direct_lateral", "frac_wide_field_lateral", "frac_uncolumned_other",
+        "frac_co_columnar", "frac_feedforward", "frac_feedback",
+        "frac_cross_parallel", "frac_unknown",
     ]
     assert abs(sum(idx[k] for k in label_fracs) - 1.0) < 1e-9
     assert idx["frac_lateral"] == idx["frac_direct_lateral"] + idx["frac_wide_field_lateral"]
