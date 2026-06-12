@@ -437,3 +437,67 @@ def assign_medulla_sublayer(
     per_cell = per_cell[per_cell["n_syn"] >= min_syn].copy()
     per_cell["sublayer"] = per_cell["median_rel_depth"].map(medulla_sublayer_from_rel_depth)
     return per_cell.reset_index().rename(columns={"pre_root_id": "root_id"}), ruler
+
+
+def medulla_sublayer_cache_path(side, *, data_dir=DATA_DIR):
+    """Path of the per-neuron medulla-sublayer cache for a hemisphere ``side``."""
+    return os.path.join(
+        data_dir, "derived", "analysis", "lateral_inhibition", f"medulla_sublayer_{side}.csv"
+    )
+
+
+def load_or_build_medulla_sublayer(
+    manager, *, side="right", data_dir=DATA_DIR, rebuild=False, min_syn=20
+):
+    """Per-neuron medulla sublayer for **all ME-stage types**, cached to CSV.
+
+    Builds the sublayer table for every neuron whose coarse stage is ``ME`` (via
+    :func:`assign_stage_from_manager`) by reading ``synapse_coordinates.csv`` once,
+    then caches it to :func:`medulla_sublayer_cache_path` so the ~864 MB read happens
+    only on the first call (or when ``rebuild=True``). Returns the per-cell frame
+    (``root_id, ptype, n_syn, median_rel_depth, sublayer``).
+
+    The cache is keyed by ``side`` only; bump it (``rebuild=True``) if the depth-ruler
+    parameters or the ME type set change.
+    """
+    path = medulla_sublayer_cache_path(side, data_dir=data_dir)
+    if not rebuild and os.path.exists(path):
+        return pd.read_csv(path, dtype={"root_id": str})
+
+    stage_table = assign_stage_from_manager(manager)
+    me_types = sorted(
+        stage_table.loc[stage_table["stage"] == "ME", "primary_type"].dropna().unique()
+    )
+    per_cell, _ = assign_medulla_sublayer(
+        manager.optic_lobe_neurons_df, side=side, types=me_types, data_dir=data_dir, min_syn=min_syn
+    )
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    per_cell.to_csv(path, index=False)
+    return per_cell
+
+
+def attach_medulla_sublayer(stage_table, sublayer_df):
+    """Add ``sublayer`` and ``fine_stage`` columns to a stage table.
+
+    ``fine_stage`` = the per-neuron medulla sublayer (``ME:distal`` / ``ME:medial`` /
+    ``ME:proximal``) where one is available, else the coarse ``stage`` unchanged. Cells
+    of an ME type without a per-neuron assignment fall back to their type's modal
+    sublayer (so low-synapse cells still get the layer their type sits in), and only
+    then to plain ``ME``. Non-ME stages are passed through untouched.
+    """
+    out = stage_table.copy()
+    sub = sublayer_df.dropna(subset=["sublayer"]).drop_duplicates("root_id").set_index("root_id")
+    per_cell = out["root_id"].map(sub["sublayer"])
+
+    # per-type modal sublayer as a fallback for ME cells missing a direct assignment
+    type_mode = (
+        sublayer_df.dropna(subset=["sublayer"])
+        .groupby("ptype")["sublayer"]
+        .agg(lambda s: s.value_counts().idxmax())
+    )
+    is_me = out["stage"].eq("ME")
+    per_type = out["primary_type"].map(type_mode).where(is_me)
+
+    out["sublayer"] = per_cell.fillna(per_type)
+    out["fine_stage"] = out["sublayer"].where(out["sublayer"].notna(), out["stage"])
+    return out

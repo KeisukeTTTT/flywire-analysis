@@ -8,6 +8,7 @@ from src.lateral.stage import (
     MEDULLA_SUBLAYERS,
     OPTIC_STAGES,
     assign_stage,
+    attach_medulla_sublayer,
     dominant_neuropils,
     medulla_sublayer_from_rel_depth,
     neuropil_base,
@@ -119,6 +120,31 @@ def test_medulla_sublayer_from_rel_depth_bins():
     assert medulla_sublayer_from_rel_depth(2.0 / 3.0) == "ME:proximal"
     assert pd.isna(medulla_sublayer_from_rel_depth(np.nan))
     assert set(MEDULLA_SUBLAYERS) == {"ME:distal", "ME:medial", "ME:proximal"}
+
+
+def test_attach_medulla_sublayer_fine_stage_and_type_fallback():
+    stage_table = pd.DataFrame(
+        {
+            "root_id": ["m1", "m2", "m3", "la1"],
+            "primary_type": ["Dm9", "Dm9", "Pm04", "L1"],
+            "stage": ["ME", "ME", "ME", "LA"],
+        }
+    )
+    # m1 has a direct assignment; m2 (same type Dm9) does not -> type-modal fallback;
+    # m3 has a direct assignment; la1 is non-ME -> untouched.
+    sublayer_df = pd.DataFrame(
+        {
+            "root_id": ["m1", "m3"],
+            "ptype": ["Dm9", "Pm04"],
+            "sublayer": ["ME:distal", "ME:proximal"],
+        }
+    )
+    out = attach_medulla_sublayer(stage_table, sublayer_df).set_index("root_id")
+    assert out.loc["m1", "fine_stage"] == "ME:distal"  # direct
+    assert out.loc["m2", "fine_stage"] == "ME:distal"  # Dm9 type-modal fallback
+    assert out.loc["m3", "fine_stage"] == "ME:proximal"
+    assert out.loc["la1", "fine_stage"] == "LA"  # non-ME passes through
+    assert pd.isna(out.loc["la1", "sublayer"])
 
 
 def test_assign_stage_photoreceptor_and_afferent():
