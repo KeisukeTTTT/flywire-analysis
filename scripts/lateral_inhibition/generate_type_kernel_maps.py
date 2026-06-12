@@ -84,7 +84,8 @@ def parse_args():
     ap.add_argument("--inward-method", default="local", choices=["local", "centroid"],
                     help="inward axis: 'local' edge normal (default) or 'centroid' (legacy)")
     ap.add_argument("--min-cells", type=int, default=50)
-    ap.add_argument("--min-syn", type=int, default=1)
+    ap.add_argument("--min-syn", type=int, default=5,
+                    help="min synapses per connection (default 5 = LateralInhibitionCriteria default)")
     ap.add_argument("--dpi", type=int, default=120)
     return ap.parse_args()
 
