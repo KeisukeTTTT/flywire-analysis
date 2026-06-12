@@ -5,9 +5,11 @@ import pandas as pd
 
 from src.lateral.stage import (
     FAMILY_TO_STAGE,
+    MEDULLA_SUBLAYERS,
     OPTIC_STAGES,
     assign_stage,
     dominant_neuropils,
+    medulla_sublayer_from_rel_depth,
     neuropil_base,
     neuropil_to_stage,
 )
@@ -105,6 +107,18 @@ def test_assign_stage_span_type_uses_neuropil_input_output():
     assert st.loc["n2", "stage_source"] == "neuropil_in"
     assert st.loc["n2", "input_stage"] == "ME"
     assert st.loc["n2", "output_stage"] == "LOP"
+
+
+def test_medulla_sublayer_from_rel_depth_bins():
+    assert medulla_sublayer_from_rel_depth(0.0) == "ME:distal"
+    assert medulla_sublayer_from_rel_depth(0.2) == "ME:distal"
+    assert medulla_sublayer_from_rel_depth(0.5) == "ME:medial"
+    assert medulla_sublayer_from_rel_depth(0.9) == "ME:proximal"
+    # boundaries are left-closed: 1/3 -> medial, 2/3 -> proximal
+    assert medulla_sublayer_from_rel_depth(1.0 / 3.0) == "ME:medial"
+    assert medulla_sublayer_from_rel_depth(2.0 / 3.0) == "ME:proximal"
+    assert pd.isna(medulla_sublayer_from_rel_depth(np.nan))
+    assert set(MEDULLA_SUBLAYERS) == {"ME:distal", "ME:medial", "ME:proximal"}
 
 
 def test_assign_stage_photoreceptor_and_afferent():

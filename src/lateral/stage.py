@@ -377,3 +377,63 @@ def assign_medulla_layer(
         rel = 1.0 - rel
     sc["rel_depth"] = rel
     return sc, MedullaDepthRuler(normal=normal, c0=c0, lo=lo, hi=hi, flipped=flipped)
+
+
+# Coarse medulla sublayer bins along the relative-depth axis (0 = distal/M1 ..
+# 1 = proximal/M10). Three bands keep the refinement robust to the depth ruler's
+# noise while still separating the distal (Dm) from the proximal (Pm) tier -- the
+# distinction the coarse single "ME" stage collapses.
+MEDULLA_SUBLAYER_EDGES = (1.0 / 3.0, 2.0 / 3.0)
+MEDULLA_SUBLAYERS = ("ME:distal", "ME:medial", "ME:proximal")
+
+
+def medulla_sublayer_from_rel_depth(rel_depth, *, edges=MEDULLA_SUBLAYER_EDGES):
+    """Bin a relative medulla depth into a coarse sublayer label.
+
+    ``rel_depth`` 0 = distal (M1) .. 1 = proximal (M10). Returns one of
+    :data:`MEDULLA_SUBLAYERS`, or ``pd.NA`` for a missing depth.
+    """
+    if rel_depth is None or (isinstance(rel_depth, float) and np.isnan(rel_depth)):
+        return pd.NA
+    if rel_depth < edges[0]:
+        return MEDULLA_SUBLAYERS[0]
+    if rel_depth < edges[1]:
+        return MEDULLA_SUBLAYERS[1]
+    return MEDULLA_SUBLAYERS[2]
+
+
+def assign_medulla_sublayer(
+    neurons_df,
+    *,
+    side="right",
+    types=None,
+    data_dir=DATA_DIR,
+    depth_clip=(-0.25, 1.25),
+    min_syn=20,
+    **medulla_layer_kwargs,
+):
+    """Per-neuron medulla sublayer (distal / medial / proximal) from synapse depth.
+
+    Opt-in and heavy: wraps :func:`assign_medulla_layer` (reads ~864 MB). Aggregates
+    each cell's synapse ``rel_depth`` to a median and bins it via
+    :func:`medulla_sublayer_from_rel_depth`. Only the types loaded by
+    :func:`assign_medulla_layer` (the distal/proximal anchors, the ``reference_type``
+    and any requested ``types``) receive a sublayer -- a *full* sublayer-aware
+    same-stage gate over every ME type is a larger task tracked separately.
+
+    Returns ``(per_cell, ruler)``: ``per_cell`` is keyed by ``root_id`` (reset to a
+    column) with ``ptype, n_syn, median_rel_depth, sublayer``; ``ruler`` is the
+    :class:`MedullaDepthRuler`.
+    """
+    sc, ruler = assign_medulla_layer(
+        neurons_df, side=side, types=types, data_dir=data_dir, **medulla_layer_kwargs
+    )
+    valid = sc[sc["rel_depth"].between(depth_clip[0], depth_clip[1])]
+    per_cell = valid.groupby("pre_root_id").agg(
+        ptype=("ptype", "first"),
+        n_syn=("rel_depth", "size"),
+        median_rel_depth=("rel_depth", "median"),
+    )
+    per_cell = per_cell[per_cell["n_syn"] >= min_syn].copy()
+    per_cell["sublayer"] = per_cell["median_rel_depth"].map(medulla_sublayer_from_rel_depth)
+    return per_cell.reset_index().rename(columns={"pre_root_id": "root_id"}), ruler

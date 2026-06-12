@@ -45,13 +45,16 @@ from .pathtrace import (
 from .stage import (
     FAMILY_TO_STAGE,
     LOCAL_INTERNEURON_FAMILIES,
+    MEDULLA_SUBLAYERS,
     NEUROPIL_TO_STAGE,
     MedullaDepthRuler,
     assign_medulla_layer,
+    assign_medulla_sublayer,
     assign_stage,
     assign_stage_from_manager,
     dominant_neuropils,
     is_intrinsic_inhibitory_mediator,
+    medulla_sublayer_from_rel_depth,
     neuropil_base,
     neuropil_to_stage,
 )
@@ -78,13 +81,16 @@ __all__ = [
     # stage
     "FAMILY_TO_STAGE",
     "LOCAL_INTERNEURON_FAMILIES",
+    "MEDULLA_SUBLAYERS",
     "NEUROPIL_TO_STAGE",
     "MedullaDepthRuler",
     "assign_medulla_layer",
+    "assign_medulla_sublayer",
     "assign_stage",
     "assign_stage_from_manager",
     "dominant_neuropils",
     "is_intrinsic_inhibitory_mediator",
+    "medulla_sublayer_from_rel_depth",
     "neuropil_base",
     "neuropil_to_stage",
     # edge_region
