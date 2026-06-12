@@ -9,8 +9,14 @@ Labels (stage + geometry):
 
 * ``direct_lateral``        -- same home stage, columnar source offset by
   ``>= min_offset_cols`` columns (a neighbor-column monosynaptic contact).
-* ``wide_field_lateral``    -- same home stage, source has no single column (a
-  wide-field / amacrine interneuron -- the canonical lateral-inhibition mediator).
+* ``wide_field_lateral``    -- same home stage, source has no single column *and*
+  belongs to a local-interneuron / amacrine family (the canonical lateral-inhibition
+  mediator). The family gate (``wide_field_requires_local_family``, on by default)
+  stops a merely-missing column coordinate -- a central neuron projecting in, an
+  unreconstructed cell, a type never column-mapped -- from masquerading as wide-field.
+* ``uncolumned_other``      -- same home stage, no column coordinate, but *not* a
+  local-interneuron family: an uncolumned source whose wide-field morphology is not
+  established. Kept separate so it is neither counted as lateral nor silently dropped.
 * ``co_columnar``           -- same home stage but within the home column
   (``Δcol < min_offset_cols``); spatially central, not lateral.
 * ``feedforward_inhibition``-- pre is an earlier stage than post (RETINA<LA<ME<LO/LOP).
@@ -75,6 +81,9 @@ class LateralInhibitionCriteria:
     same_stage_def: str = "home"  # "home" or "syn" (see edge_region.tag_edges)
     min_offset_cols: float = 1.0  # Δcolumn >= this counts as lateral (excludes home column)
     inh_dominant_frac: float = 0.5  # post inh_frac >= this -> disinhibitory
+    # Require an uncolumned source to be a local-interneuron / amacrine family before
+    # it is labelled wide_field_lateral; otherwise it falls to uncolumned_other.
+    wide_field_requires_local_family: bool = True
 
 
 def classify_inhibition(conn, stage_table, *, col_assign=None, geometry=None, criteria=None):
@@ -128,6 +137,13 @@ def classify_inhibition(conn, stage_table, *, col_assign=None, geometry=None, cr
     same = inh["same_stage"].to_numpy()
     offset_ok = (inh["delta_col"] >= criteria.min_offset_cols).to_numpy()
     no_col = inh["delta_col"].isna().to_numpy()
+    pre_local = inh["pre_is_local_interneuron"].to_numpy(dtype=bool)
+    if criteria.wide_field_requires_local_family:
+        wide_field = same & no_col & pre_local
+        uncolumned_other = same & no_col & ~pre_local
+    else:
+        wide_field = same & no_col
+        uncolumned_other = np.zeros(len(inh), dtype=bool)
     ff = (inh["pre_rank"] < inh["post_rank"]).to_numpy()
     fb = (inh["pre_rank"] > inh["post_rank"]).to_numpy()
     unknown = (inh["pre_stage"].isna() | inh["post_stage"].isna()).to_numpy()
@@ -136,7 +152,8 @@ def classify_inhibition(conn, stage_table, *, col_assign=None, geometry=None, cr
         [
             unknown,
             same & offset_ok,
-            same & no_col,
+            wide_field,
+            uncolumned_other,
             same,  # same stage, has column, below offset -> co-columnar
             ff,
             fb,
@@ -145,6 +162,7 @@ def classify_inhibition(conn, stage_table, *, col_assign=None, geometry=None, cr
             "unknown",
             "direct_lateral",
             "wide_field_lateral",
+            "uncolumned_other",
             "co_columnar",
             "feedforward_inhibition",
             "feedback_inhibition",
@@ -177,6 +195,7 @@ def lateral_inhibition_index(classified):
             "frac_lateral": lateral,
             "frac_direct_lateral": frac("direct_lateral"),
             "frac_wide_field_lateral": frac("wide_field_lateral"),
+            "frac_uncolumned_other": frac("uncolumned_other"),
             "frac_co_columnar": frac("co_columnar"),
             "frac_feedforward": frac("feedforward_inhibition"),
             "frac_feedback": frac("feedback_inhibition"),

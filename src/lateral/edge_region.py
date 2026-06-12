@@ -42,7 +42,8 @@ def tag_edges(conn_df, stage_table, *, same_stage_def="home"):
     Returns:
         Copy of ``conn_df`` with added columns: ``syn_region``, ``{pre,post}_stage``,
         ``{pre,post}_input_stage``, ``{pre,post}_output_stage``, ``{pre,post}_intrinsic``,
-        ``same_stage_home``, ``same_stage_syn`` and ``same_stage``.
+        ``{pre,post}_is_local_interneuron``, ``same_stage_home``, ``same_stage_syn``
+        and ``same_stage``.
     """
     if same_stage_def not in ("home", "syn"):
         raise ValueError(f"unknown same_stage_def: {same_stage_def!r} (use 'home' or 'syn')")
@@ -52,12 +53,22 @@ def tag_edges(conn_df, stage_table, *, same_stage_def="home"):
 
     out["syn_region"] = out["neuropil"].map(neuropil_base) if "neuropil" in out.columns else pd.NA
 
+    has_local_family = "is_local_interneuron_family" in st.columns
     for side in ("pre", "post"):
         ids = out[f"{side}_root_id"]
         out[f"{side}_stage"] = ids.map(st["stage"])
         out[f"{side}_input_stage"] = ids.map(st["input_stage"])
         out[f"{side}_output_stage"] = ids.map(st["output_stage"])
         out[f"{side}_intrinsic"] = ids.map(st["is_intrinsic"]).fillna(False).astype(bool)
+        # Local-interneuron / amacrine family membership (the canonical wide-field
+        # lateral mediators). Used to ground the wide_field_lateral label on
+        # morphology rather than on a merely-missing column coordinate. Defaults to
+        # False when the stage table predates the flag or the neuron is absent.
+        out[f"{side}_is_local_interneuron"] = (
+            ids.map(st["is_local_interneuron_family"]).fillna(False).astype(bool)
+            if has_local_family
+            else False
+        )
 
     out["same_stage_home"] = (out["pre_stage"] == out["post_stage"]) & out["pre_stage"].notna()
     out["same_stage_syn"] = out["same_stage_home"] & (out["syn_region"] == out["pre_stage"])
