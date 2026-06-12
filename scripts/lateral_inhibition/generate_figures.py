@@ -27,28 +27,19 @@ from scipy.spatial import cKDTree
 
 from src.config import DATA_DIR
 from src.data import FlyWireDataManager
+from src.lateral import (
+    EXCITATORY_NT,
+    HEXN,
+    INHIBITORY_NT,
+    axial_to_cart,
+    classify_nt,
+    hex_distance,
+    interior_cells,
+    load_column_assignment,
+)
 
 FIG_DIR = REPO_ROOT / "report" / "lateral_inhibition" / "figures"
 FIG_DIR.mkdir(parents=True, exist_ok=True)
-
-INHIBITORY_NT = {"GABA", "GLUT", "HIS"}
-EXCITATORY_NT = {"ACH"}
-
-
-def classify_nt(x):
-    if x in INHIBITORY_NT:
-        return "inh"
-    if x in EXCITATORY_NT:
-        return "exc"
-    return "other"
-
-
-def axial_to_cart(p, q):
-    return p + 0.5 * q, q * (np.sqrt(3) / 2)
-
-
-def hex_distance(dp, dq):
-    return (np.abs(dp) + np.abs(dp + dq) + np.abs(dq)) // 2
 
 
 def save(fig, name):
@@ -68,10 +59,7 @@ conn["same_type"] = conn["pre_primary_type"] == conn["post_primary_type"]
 print(f"  loaded in {time.perf_counter() - t0:.1f}s "
       f"({len(neurons):,} neurons, {len(conn):,} edges)")
 
-col_assign = pd.read_csv(
-    Path(DATA_DIR) / "raw" / "flywire" / "csv" / "column_assignment.csv",
-    dtype={"root_id": str, "column_id": str},
-)
+col_assign = load_column_assignment(DATA_DIR)
 col_map = col_assign.set_index("root_id")[["p", "q", "hemisphere"]]
 pre_side_map = neurons.drop_duplicates("root_id").set_index("root_id")["side"]
 
@@ -151,7 +139,7 @@ ec["qc"] = ec["pre_root_id"].map(per_pre["qc"])
 ec = ec.dropna(subset=["pc"])
 dp = ec["p_post"] - ec["pc"]
 dq = ec["q_post"] - ec["qc"]
-ec["d_hex"] = np.sqrt((dp ** 2 + dq ** 2 + (dp + dq) ** 2) / 2)
+ec["d_hex"] = hex_distance(dp, dq)
 ec["wd"] = ec["d_hex"] * ec["syn_count"]
 
 spread = ec.groupby("pre_root_id").agg(
@@ -316,9 +304,8 @@ print("\nQ7 setup: edge categorization for Mi1")
 mi1_r = col_assign[(col_assign["type"] == "Mi1") & (col_assign["hemisphere"] == "right")]
 mi1_pq = mi1_r[["root_id", "p", "q"]].copy()
 all_pq = set(zip(mi1_pq["p"], mi1_pq["q"]))
-hex_nbrs = [(1, 0), (-1, 0), (0, 1), (0, -1), (1, -1), (-1, 1)]
 mi1_pq["n_neighbors"] = mi1_pq.apply(
-    lambda r: sum((r["p"] + dp, r["q"] + dq) in all_pq for dp, dq in hex_nbrs), axis=1)
+    lambda r: sum((r["p"] + dp, r["q"] + dq) in all_pq for dp, dq in HEXN), axis=1)
 mi1_pq["edge_cat"] = pd.cut(mi1_pq["n_neighbors"], bins=[-1, 3, 5, 6],
                             labels=["corner", "edge", "interior"])
 mi1_ids = set(mi1_pq["root_id"])
@@ -487,7 +474,7 @@ def edge_stats_for_type(cell_type, hemisphere="right", min_cells=30):
     cpq = cells[["root_id", "p", "q"]].copy()
     all_pq_t = set(zip(cpq["p"], cpq["q"]))
     cpq["n_neighbors"] = cpq.apply(
-        lambda r: sum((r["p"] + dp, r["q"] + dq) in all_pq_t for dp, dq in hex_nbrs), axis=1)
+        lambda r: sum((r["p"] + dp, r["q"] + dq) in all_pq_t for dp, dq in HEXN), axis=1)
     cpq["edge_cat"] = pd.cut(cpq["n_neighbors"], bins=[-1, 3, 5, 6],
                              labels=["corner", "edge", "interior"])
     cids = set(cpq["root_id"])
@@ -654,14 +641,6 @@ _Q = col_map["q"].to_dict()
 _HM = col_map["hemisphere"].to_dict()
 
 
-def _interior_cells(cell_type, hemisphere, min_nbrs=5):
-    cells = col_assign[(col_assign["type"] == cell_type)
-                       & (col_assign["hemisphere"] == hemisphere)].drop_duplicates("root_id")
-    s = set(zip(cells["p"], cells["q"]))
-    nn = [sum((p + dp, q + dq) in s for dp, dq in hex_nbrs) for p, q in zip(cells["p"], cells["q"])]
-    return cells.assign(n_neighbors=nn).query("n_neighbors >= @min_nbrs").set_index("root_id")
-
-
 # --------------------------------------------------------------------------
 # Fig 10: Q10 (A2) T4/T5 input spatial offset -> direction selectivity
 # --------------------------------------------------------------------------
@@ -669,7 +648,7 @@ print("\nFig 10: Q10 (A2) T4/T5 input spatial offset")
 
 
 def _per_cell_centroids(subtype, src_types, hemi):
-    cells = _interior_cells(subtype, hemi)
+    cells = interior_cells(col_assign, subtype, hemi)
     hp, hq = cells["p"].to_dict(), cells["q"].to_dict()
     inc = conn[conn["post_root_id"].isin(set(cells.index))
                & conn["pre_primary_type"].isin(src_types)].copy()
@@ -765,7 +744,7 @@ print("\nFig 11: Q11 (A1) center-surround receptive field")
 
 
 def _direct_kernel(target, sign, hemi="right"):
-    cells = _interior_cells(target, hemi)
+    cells = interior_cells(col_assign, target, hemi)
     hp, hq = cells["p"].to_dict(), cells["q"].to_dict()
     inc = conn[conn["post_root_id"].isin(set(cells.index)) & (conn["sign"] == sign)].copy()
     inc["sp"] = inc["pre_root_id"].map(_P)
@@ -775,12 +754,12 @@ def _direct_kernel(target, sign, hemi="right"):
     inc = inc[inc["sh"] == hemi]
     dp = (inc["sp"] - inc["post_root_id"].map(hp)).astype(int)
     dq = (inc["sq"] - inc["post_root_id"].map(hq)).astype(int)
-    inc["d"] = hex_distance(dp, dq)
+    inc["d"] = hex_distance(dp, dq, integer=True)
     return inc.groupby("d")["syn_count"].sum()
 
 
 def _disyn_inh_kernel(target, hemi="right", top_inh_types=12):
-    cells = _interior_cells(target, hemi)
+    cells = interior_cells(col_assign, target, hemi)
     hp, hq = cells["p"].to_dict(), cells["q"].to_dict()
     inh_to_t = conn[conn["post_root_id"].isin(set(cells.index)) & (conn["sign"] == "inh")].copy()
     top_types = (inh_to_t.groupby("pre_primary_type")["syn_count"].sum()
@@ -798,7 +777,7 @@ def _disyn_inh_kernel(target, hemi="right", top_inh_types=12):
     mg = inh_to_t.merge(jin, left_on="pre_root_id", right_on="j", how="inner")
     dp = (mg["sp"] - mg["post_root_id"].map(hp)).astype(int)
     dq = (mg["sq"] - mg["post_root_id"].map(hq)).astype(int)
-    mg["d"] = hex_distance(dp, dq)
+    mg["d"] = hex_distance(dp, dq, integer=True)
     mg["w"] = mg["w1"] * mg["w2n"]
     return mg.groupby("d")["w"].sum()
 
