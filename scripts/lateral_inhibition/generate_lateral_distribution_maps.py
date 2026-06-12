@@ -60,7 +60,8 @@ def parse_args():
                     help="comma-separated receiver types (default: all columnar types)")
     ap.add_argument("--hemisphere", default="right", choices=["right", "left"])
     ap.add_argument("--min-cells", type=int, default=50)
-    ap.add_argument("--min-syn", type=int, default=1)
+    ap.add_argument("--min-syn", type=int, default=5,
+                    help="min synapses per connection (default 5 = LateralInhibitionCriteria default)")
     ap.add_argument("--dpi", type=int, default=110)
     return ap.parse_args()
 

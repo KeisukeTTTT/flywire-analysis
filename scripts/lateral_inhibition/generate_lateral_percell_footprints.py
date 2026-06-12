@@ -67,7 +67,8 @@ def parse_args():
     ap.add_argument("--hemisphere", default="right", choices=["right", "left"])
     ap.add_argument("--max-per-type", type=int, default=6,
                     help="cells per type, spanning rim->centre (0 = all cells of the type)")
-    ap.add_argument("--min-syn", type=int, default=1)
+    ap.add_argument("--min-syn", type=int, default=5,
+                    help="min synapses per connection (default 5 = LateralInhibitionCriteria default)")
     ap.add_argument("--dpi", type=int, default=110)
     return ap.parse_args()
 
