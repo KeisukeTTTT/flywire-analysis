@@ -78,7 +78,7 @@ docker run --rm -v $(pwd)/report/lateral_inhibition:/work -w /work texlive/texli
 - **Q8**: 抑制性インターニューロン全 205 種の family サーベイ (Sm 系が最 wide-field)
 - **Q9**: 多 cell type で Q7 パターンが普遍的か (Yes、ただし projection neuron T4/T5 で端効果弱い)
 
-### 拡張解析 (構造から計算へ; `notebooks/lateral_inhibition_extended.ipynb`)
+### 拡張解析 (構造から計算へ; `src/lateral/` 基盤に集約。デモは `notebooks/lateral_inhibition_rigorous.ipynb`)
 
 - **Q10 (A2)**: T4/T5 の方向選択性 = 入力の空間オフセット (Mi9−Mi4 dipole が亜型で回転、両半球一致、Rayleigh p≤1e-80)
 - **Q11 (A1)**: center-surround 受容野 (興奮は中心、二シナプス性抑制は広い surround、surround/center 比 2.5、DoG バンドパス)
