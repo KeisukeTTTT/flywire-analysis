@@ -32,8 +32,6 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
-import numpy as np
-import pandas as pd
 import matplotlib
 
 matplotlib.use("Agg")  # headless batch rendering
@@ -41,24 +39,11 @@ import matplotlib.pyplot as plt
 
 from src.config import DATA_DIR
 from src.data import FlyWireDataManager
+from src.lateral import axial_to_cart, classify_nt, load_column_assignment
 
 OUT_ROOT = REPO_ROOT / "outputs" / "lateral_inhibition" / "per_column"
 WINDOW = 9.0  # zoom half-width (cart units ~ hex columns) around the home column
-INHIBITORY_NT = {"GABA", "GLUT", "HIS"}
-EXCITATORY_NT = {"ACH"}
 EXCLUDED_RECEIVERS = {"R7", "R8"}  # photoreceptor inputs, not edge-effect receivers
-
-
-def classify_nt(x):
-    if x in INHIBITORY_NT:
-        return "inh"
-    if x in EXCITATORY_NT:
-        return "exc"
-    return "other"
-
-
-def axial_to_cart(p, q):
-    return p + 0.5 * q, q * (np.sqrt(3) / 2)
 
 
 def parse_args():
@@ -81,10 +66,7 @@ def main():
     m = FlyWireDataManager()
     conn = m.optic_lobe_connections_df.copy()
     conn["sign"] = conn["nt_type"].map(classify_nt)
-    col_assign = pd.read_csv(
-        Path(DATA_DIR) / "raw" / "flywire" / "csv" / "column_assignment.csv",
-        dtype={"root_id": str, "column_id": str},
-    )
+    col_assign = load_column_assignment(DATA_DIR)
     col_map = col_assign.set_index("root_id")[["p", "q", "hemisphere"]]
     print(f"  loaded in {time.perf_counter() - t0:.1f}s ({len(conn):,} edges)")
 
