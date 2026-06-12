@@ -11,10 +11,12 @@ feedforward / feedback inhibition and disinhibition.
 from __future__ import annotations
 
 from .hexgeom import (
+    CENTER_MIN_DISTANCE,
     DEFAULT_INWARD_METHOD,
     HEXN,
     INWARD_METHODS,
     REFERENCE_COLUMN_TYPE,
+    RIM_MAX_DISTANCE,
     ColumnGeometry,
     axial_to_cart,
     hex_distance,
@@ -65,10 +67,12 @@ from .stage import (
 
 __all__ = [
     # hexgeom
+    "CENTER_MIN_DISTANCE",
     "DEFAULT_INWARD_METHOD",
     "HEXN",
     "INWARD_METHODS",
     "REFERENCE_COLUMN_TYPE",
+    "RIM_MAX_DISTANCE",
     "ColumnGeometry",
     "axial_to_cart",
     "hex_distance",
