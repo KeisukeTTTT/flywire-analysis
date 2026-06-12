@@ -41,6 +41,17 @@ class RadialKernels:
     ``conn`` must carry ``sign`` (added if missing), ``syn_count``, ``pre_root_id``,
     ``post_root_id`` and ``pre_primary_type``. ``col_assign`` is the column table
     (see :func:`src.lateral.hexgeom.load_column_assignment`).
+
+    NOTE -- :meth:`direct_kernel` (sign ``"inh"``) and :meth:`disyn_kernel` are **not a
+    partition** of a target's inhibition. Both start from the same inhibitory partners
+    ``J`` of ``T`` and reuse the same ``J->T`` weight; they differ only in where that
+    weight is *placed* in Δcolumn space -- the direct kernel at ``J``'s own column, the
+    disynaptic kernel redistributed across the columns of ``J``'s excitatory inputs.
+    The same ``J->T`` mass therefore appears in both, so the two curves are meant for a
+    **shape / RMS-radius (σ) comparison** ("direct is home-concentrated, mediated is
+    broad"), not for adding their masses. (A columnar ``J`` contributes to both; a
+    wide-field ``J`` with no column drops out of the direct kernel entirely yet still
+    builds the mediated surround.)
     """
 
     conn: pd.DataFrame
