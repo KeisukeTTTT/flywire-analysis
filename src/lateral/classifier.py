@@ -48,6 +48,19 @@ from .nt_sign import add_sign
 # outputs of the medulla (equal rank); AME runs parallel to ME.
 STAGE_RANK = {"RETINA": 0, "LA": 1, "ME": 2, "AME": 2, "LO": 3, "LOP": 3}
 
+# Fine rank used when same_stage_def="sublayer": the medulla M1-M10 sublayers are
+# ordered distal -> proximal *within* the (1, 3) gap between LA and LO/LOP, so a
+# cross-sublayer ME->ME inhibitory edge (e.g. distal -> proximal) sorts into
+# feedforward/feedback instead of being lumped as same-stage. An unresolved bare "ME"
+# sits at the neutral middle.
+SUBLAYER_RANK = {
+    **STAGE_RANK,
+    "ME": 2.5,
+    "ME:distal": 2.2,
+    "ME:medial": 2.5,
+    "ME:proximal": 2.8,
+}
+
 
 def stage_rank(stage):
     return STAGE_RANK.get(stage, np.nan)
@@ -131,8 +144,15 @@ def classify_inhibition(conn, stage_table, *, col_assign=None, geometry=None, cr
     inh["post_inh_frac"] = inh["post_primary_type"].map(osf_out["inh_frac"]).fillna(0.0)
     inh["is_disinhibitory"] = inh["post_inh_frac"] >= criteria.inh_dominant_frac
 
-    inh["pre_rank"] = inh["pre_stage"].map(STAGE_RANK)
-    inh["post_rank"] = inh["post_stage"].map(STAGE_RANK)
+    # When gating on the medulla sublayer, rank pre/post by their fine stage so that
+    # cross-sublayer ME->ME edges resolve to feedforward / feedback; otherwise rank by
+    # the coarse neuropil stage.
+    if criteria.same_stage_def == "sublayer" and "pre_fine_stage" in inh.columns:
+        inh["pre_rank"] = inh["pre_fine_stage"].map(SUBLAYER_RANK)
+        inh["post_rank"] = inh["post_fine_stage"].map(SUBLAYER_RANK)
+    else:
+        inh["pre_rank"] = inh["pre_stage"].map(STAGE_RANK)
+        inh["post_rank"] = inh["post_stage"].map(STAGE_RANK)
 
     same = inh["same_stage"].to_numpy()
     offset_ok = (inh["delta_col"] >= criteria.min_offset_cols).to_numpy()

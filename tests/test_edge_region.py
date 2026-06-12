@@ -56,3 +56,50 @@ def test_intrinsic_flags_present():
     out = tag_edges(_conn(), _stage_table())
     assert {"pre_intrinsic", "post_intrinsic"} <= set(out.columns)
     assert out["pre_intrinsic"].all()
+
+
+def _sublayer_stage_table():
+    # two ME cells in different medulla sublayers + one same-sublayer pair
+    return pd.DataFrame(
+        {
+            "root_id": ["dm_dist", "pm_prox", "dm_dist2", "l1"],
+            "stage": ["ME", "ME", "ME", "LA"],
+            "input_stage": ["ME", "ME", "ME", "LA"],
+            "output_stage": ["ME", "ME", "ME", "ME"],
+            "is_intrinsic": [True, True, True, True],
+            "fine_stage": ["ME:distal", "ME:proximal", "ME:distal", "LA"],
+        }
+    )
+
+
+def _sublayer_conn():
+    return pd.DataFrame(
+        {
+            "pre_root_id": ["dm_dist", "dm_dist"],
+            "post_root_id": ["dm_dist2", "pm_prox"],
+            "neuropil": ["ME_R", "ME_R"],
+            "syn_count": [10, 12],
+        }
+    )
+
+
+def test_same_stage_sublayer_splits_within_me():
+    out = tag_edges(_sublayer_conn(), _sublayer_stage_table(), same_stage_def="sublayer").set_index(
+        ["pre_root_id", "post_root_id"]
+    )
+    # distal -> distal: same sublayer -> same_stage True
+    assert bool(out.loc[("dm_dist", "dm_dist2"), "same_stage"]) is True
+    # distal -> proximal: same coarse ME but different sublayer -> NOT same_stage
+    assert bool(out.loc[("dm_dist", "pm_prox"), "same_stage"]) is False
+    # the coarse home definition would have lumped both as same stage
+    assert bool(out.loc[("dm_dist", "pm_prox"), "same_stage_home"]) is True
+
+
+def test_sublayer_def_falls_back_when_no_fine_stage():
+    # stage table without fine_stage -> fine_stage defaults to coarse stage
+    st = _sublayer_stage_table().drop(columns=["fine_stage"])
+    out = tag_edges(_sublayer_conn(), st, same_stage_def="sublayer").set_index(
+        ["pre_root_id", "post_root_id"]
+    )
+    # both endpoints are ME -> same coarse stage -> same_stage True for both edges
+    assert bool(out.loc[("dm_dist", "pm_prox"), "same_stage"]) is True

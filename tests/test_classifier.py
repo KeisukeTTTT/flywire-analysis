@@ -106,6 +106,55 @@ def test_output_sign_fraction():
     assert osf.loc["Dm9", "inh_frac"] == 1.0
 
 
+def _sublayer_stage_table():
+    return pd.DataFrame(
+        {
+            "root_id": ["a_dist", "b_dist", "c_prox"],
+            "primary_type": ["Dm9", "Dm9", "Pm04"],
+            "stage": ["ME", "ME", "ME"],
+            "input_stage": ["ME", "ME", "ME"],
+            "output_stage": ["ME", "ME", "ME"],
+            "is_intrinsic": [True, True, True],
+            "is_local_interneuron_family": [True, True, True],
+            "fine_stage": ["ME:distal", "ME:distal", "ME:proximal"],
+        }
+    )
+
+
+def _sublayer_conn():
+    return pd.DataFrame(
+        {
+            "pre_root_id": ["a_dist", "a_dist", "c_prox"],
+            "post_root_id": ["b_dist", "c_prox", "a_dist"],
+            "pre_primary_type": ["Dm9", "Dm9", "Pm04"],
+            "post_primary_type": ["Dm9", "Pm04", "Dm9"],
+            "neuropil": ["ME_R"] * 3,
+            "nt_type": ["GABA"] * 3,
+            "syn_count": [10, 10, 10],
+        }
+    )
+
+
+def test_sublayer_gate_reclassifies_cross_sublayer_me_as_ff_fb():
+    crit = LateralInhibitionCriteria(min_syn=5, same_stage_def="sublayer")
+    cl = classify_inhibition(_sublayer_conn(), _sublayer_stage_table(), criteria=crit)
+    label = {(r.pre_root_id, r.post_root_id): r.label for r in cl.itertuples()}
+    # distal -> distal stays same-stage lateral (no column coords -> wide_field)
+    assert label[("a_dist", "b_dist")] == "wide_field_lateral"
+    # distal -> proximal: lower rank -> higher rank -> feedforward
+    assert label[("a_dist", "c_prox")] == "feedforward_inhibition"
+    # proximal -> distal: higher rank -> lower rank -> feedback
+    assert label[("c_prox", "a_dist")] == "feedback_inhibition"
+
+
+def test_home_gate_lumps_cross_sublayer_me_as_lateral():
+    # with the coarse home gate the same distal->proximal edge is NOT split out
+    crit = LateralInhibitionCriteria(min_syn=5, same_stage_def="home")
+    cl = classify_inhibition(_sublayer_conn(), _sublayer_stage_table(), criteria=crit)
+    label = {(r.pre_root_id, r.post_root_id): r.label for r in cl.itertuples()}
+    assert label[("a_dist", "c_prox")] == "wide_field_lateral"
+
+
 def test_lateral_inhibition_index_fractions_sum_sensibly():
     cl = classify_inhibition(
         _conn(), _stage_table(), col_assign=_col_assign(),
