@@ -24,6 +24,7 @@ dev = [
     "flake8",
     "isort",
     "pytest",
+    "nbstripout",
 ]
 notebook = [
     "jupyter>=1.0",

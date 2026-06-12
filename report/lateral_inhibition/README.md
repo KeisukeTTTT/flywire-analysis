@@ -7,8 +7,7 @@ FlyWire 連結体データを用いたショウジョウバエ視覚系の側抑
 ```
 report/lateral_inhibition/
   main.tex              # 本体 (日本語、約 8-10 ページ)
-  generate_figures.py   # 図 8 枚を再生成する Python スクリプト
-  figures/              # 図 (PNG)
+  figures/              # 本文が参照する図 (PNG、追跡)。生成は scripts/lateral_inhibition/generate_figures.py
     fig1_nt_distribution.png
     fig2_inh_fraction_dist.png
     fig3_column_spread_inh_vs_exc.png
@@ -43,7 +42,7 @@ report/lateral_inhibition/
 
 ```bash
 # プロジェクトルートで
-uv run python report/lateral_inhibition/generate_figures.py
+uv run python scripts/lateral_inhibition/generate_figures.py
 ```
 
 所要時間 約 2--3 分 (FlyWire データロード 35 秒 + 図生成 fig1--13。fig13 は synapse_coordinates.csv のロードで +数十秒)。
@@ -79,7 +78,7 @@ docker run --rm -v $(pwd)/report/lateral_inhibition:/work -w /work texlive/texli
 - **Q8**: 抑制性インターニューロン全 205 種の family サーベイ (Sm 系が最 wide-field)
 - **Q9**: 多 cell type で Q7 パターンが普遍的か (Yes、ただし projection neuron T4/T5 で端効果弱い)
 
-### 拡張解析 (構造から計算へ; `notebook/lateral_inhibition_extended.ipynb`)
+### 拡張解析 (構造から計算へ; `notebooks/lateral_inhibition_extended.ipynb`)
 
 - **Q10 (A2)**: T4/T5 の方向選択性 = 入力の空間オフセット (Mi9−Mi4 dipole が亜型で回転、両半球一致、Rayleigh p≤1e-80)
 - **Q11 (A1)**: center-surround 受容野 (興奮は中心、二シナプス性抑制は広い surround、surround/center 比 2.5、DoG バンドパス)

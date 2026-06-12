@@ -11,7 +11,9 @@ feedforward / feedback inhibition and disinhibition.
 from __future__ import annotations
 
 from .hexgeom import (
+    DEFAULT_INWARD_METHOD,
     HEXN,
+    INWARD_METHODS,
     REFERENCE_COLUMN_TYPE,
     ColumnGeometry,
     axial_to_cart,
@@ -56,7 +58,9 @@ from .stage import (
 
 __all__ = [
     # hexgeom
+    "DEFAULT_INWARD_METHOD",
     "HEXN",
+    "INWARD_METHODS",
     "REFERENCE_COLUMN_TYPE",
     "ColumnGeometry",
     "axial_to_cart",

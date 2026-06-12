@@ -7,9 +7,7 @@ memo.md
 
 # Temporary files and directories
 tmp
-notebook/*.ipynb
-notebook/.ipynb_checkpoints/
-notebook/figures/
+# notebooks/*.ipynb are tracked (outputs stripped at commit via nbstripout, see .gitattributes)
 
 # Data files
 **/*.csv
@@ -75,5 +73,5 @@ report/**/*.fdb_latexmk
 report/**/*.synctex.gz
 report/**/*.pdf
 
-# Per-column footprint figures (thousands of PNGs; regenerate via generate_per_column_figures.py)
-report/**/figures/per_column/
+# Bulk exploratory figures now go to outputs/ (already ignored above); regenerate via
+# scripts/lateral_inhibition/. Curated report figures under report/**/figures/ stay tracked.
